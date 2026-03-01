@@ -86,6 +86,8 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -164,11 +166,21 @@ private enum class HomeFeedMode {
     Following
 }
 
+private enum class SearchResultTab {
+    Users,
+    Posts
+}
+
 private enum class ProfileSection {
     Posts,
     Replies,
     Media,
     Likes
+}
+
+private enum class ProfileRelationSheet {
+    Followers,
+    Follows
 }
 
 private const val UrlAnnotationTag = "url"
@@ -580,6 +592,7 @@ private fun MainScaffold(
                         onToggleLike = onToggleLike,
                         onToggleRepost = onToggleRepost,
                         onDeletePost = onDeletePost,
+                        onSelectProfile = onSelectProfile,
                         onOpenPostThread = onOpenPostThread,
                         onOpenMedia = onOpenMedia,
                         onLoadMore = onLoadMoreTimeline
@@ -818,6 +831,7 @@ private fun TimelineTab(
     onToggleLike: (PostUi) -> Unit,
     onToggleRepost: (PostUi) -> Unit,
     onDeletePost: (PostUi) -> Unit,
+    onSelectProfile: (ActorUi) -> Unit,
     onOpenPostThread: (PostUi) -> Unit,
     onOpenMedia: (PostMediaUi) -> Unit,
     onLoadMore: () -> Unit
@@ -865,6 +879,7 @@ private fun TimelineTab(
                     onLike = { onToggleLike(post) },
                     onRepost = { onToggleRepost(post) },
                     onDelete = { onDeletePost(post) },
+                    onSelectProfile = { onSelectProfile(post.author) },
                     onOpenThread = { onOpenPostThread(post) },
                     onOpenMedia = onOpenMedia
                 )
@@ -1119,6 +1134,7 @@ private fun HomeFeedHeader(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchTab(
     query: String,
@@ -1139,7 +1155,12 @@ private fun SearchTab(
     onOpenPostThread: (PostUi) -> Unit,
     onOpenMedia: (PostMediaUi) -> Unit
 ) {
-    val hasResults = actors.isNotEmpty() || posts.isNotEmpty()
+    var selectedTab by rememberSaveable { mutableStateOf(SearchResultTab.Users) }
+    var isSearchBarActive by rememberSaveable { mutableStateOf(false) }
+    val hasResults = when (selectedTab) {
+        SearchResultTab.Users -> actors.isNotEmpty()
+        SearchResultTab.Posts -> posts.isNotEmpty()
+    }
     LazyColumn(
         contentPadding = PaddingValues(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1152,30 +1173,68 @@ private fun SearchTab(
             )
         }
         item {
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                placeholder = { Text(stringResource(R.string.search_placeholder)) },
-                trailingIcon = {
-                    Row {
-                        if (query.isNotBlank()) {
-                            IconButton(onClick = { onQueryChange("") }) {
-                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_clear))
+            SearchBar(
+                inputField = {
+                    SearchBarDefaults.InputField(
+                        query = query,
+                        onQueryChange = onQueryChange,
+                        onSearch = {
+                            isSearchBarActive = false
+                            onSearch()
+                        },
+                        expanded = isSearchBarActive,
+                        onExpandedChange = { isSearchBarActive = it },
+                        placeholder = { Text(stringResource(R.string.search_placeholder)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(R.string.cd_search)
+                            )
+                        },
+                        trailingIcon = {
+                            Row {
+                                if (query.isNotBlank()) {
+                                    IconButton(onClick = { onQueryChange("") }) {
+                                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_clear))
+                                    }
+                                }
+                                IconButton(onClick = {
+                                    isSearchBarActive = false
+                                    onSearch()
+                                }) {
+                                    Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
+                                }
                             }
                         }
-                        IconButton(onClick = onSearch) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
-                        }
-                    }
+                    )
                 },
+                expanded = isSearchBarActive,
+                onExpandedChange = { isSearchBarActive = it },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = { onSearch() }
-                )
-            )
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {}
+        }
+        if (query.isNotBlank()) {
+            item {
+                TabRow(selectedTabIndex = selectedTab.ordinal) {
+                    SearchResultTab.entries.forEach { tab ->
+                        Tab(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            text = {
+                                Text(
+                                    text = when (tab) {
+                                        SearchResultTab.Users -> stringResource(R.string.search_users)
+                                        SearchResultTab.Posts -> stringResource(R.string.search_posts)
+                                    },
+                                    fontWeight = if (tab == selectedTab) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        )
+                    }
+                }
+            }
         }
         if (query.isBlank()) {
             item {
@@ -1216,7 +1275,7 @@ private fun SearchTab(
                 }
             }
         }
-        if (hasSearched && !isLoading && errorMessage.isNullOrBlank() && !hasResults) {
+        if (hasSearched && query.isNotBlank() && !isLoading && errorMessage.isNullOrBlank() && !hasResults) {
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -1232,35 +1291,31 @@ private fun SearchTab(
             }
         }
 
-        if (actors.isNotEmpty()) {
-            item {
-                Text(stringResource(R.string.search_users), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        when (selectedTab) {
+            SearchResultTab.Users -> {
+                items(actors, key = { it.did }) { actor ->
+                    ActorRow(
+                        actor = actor,
+                        customization = customization,
+                        onSelect = { onSelectProfile(actor) },
+                        onToggleFollow = { onToggleFollow(actor) }
+                    )
+                }
             }
-            items(actors, key = { it.did }) { actor ->
-                ActorRow(
-                    actor = actor,
-                    customization = customization,
-                    onSelect = { onSelectProfile(actor) },
-                    onToggleFollow = { onToggleFollow(actor) }
-                )
-            }
-        }
-
-        if (posts.isNotEmpty()) {
-            item {
-                Text(stringResource(R.string.search_posts), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-            items(posts, key = { it.uri }) { post ->
-                PostCard(
-                    post = post,
-                    canDelete = sessionDid == post.author.did,
-                    customization = customization,
-                    onLike = { onToggleLike(post) },
-                    onRepost = { onToggleRepost(post) },
-                    onDelete = { onDeletePost(post) },
-                    onOpenThread = { onOpenPostThread(post) },
-                    onOpenMedia = onOpenMedia
-                )
+            SearchResultTab.Posts -> {
+                items(posts, key = { it.uri }) { post ->
+                    PostCard(
+                        post = post,
+                        canDelete = sessionDid == post.author.did,
+                        customization = customization,
+                        onLike = { onToggleLike(post) },
+                        onRepost = { onToggleRepost(post) },
+                        onDelete = { onDeletePost(post) },
+                        onSelectProfile = { onSelectProfile(post.author) },
+                        onOpenThread = { onOpenPostThread(post) },
+                        onOpenMedia = onOpenMedia
+                    )
+                }
             }
         }
     }
@@ -1333,6 +1388,7 @@ private fun NotificationTab(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProfileTab(
     profile: ActorUi?,
@@ -1352,6 +1408,7 @@ private fun ProfileTab(
 ) {
     var targetHandle by rememberSaveable(profile?.did) { mutableStateOf("") }
     var profileSection by rememberSaveable(profile?.did) { mutableStateOf(ProfileSection.Posts) }
+    var relationSheet by rememberSaveable(profile?.did) { mutableStateOf<ProfileRelationSheet?>(null) }
 
     if (profile == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1411,14 +1468,14 @@ private fun ProfileTab(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(
-                        onClick = {},
+                        onClick = { relationSheet = ProfileRelationSheet.Followers },
                         label = { Text(stringResource(R.string.followers_count_label, followers.size)) },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         )
                     )
                     AssistChip(
-                        onClick = {},
+                        onClick = { relationSheet = ProfileRelationSheet.Follows },
                         label = { Text(stringResource(R.string.follows_count_label, follows.size)) },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -1498,9 +1555,69 @@ private fun ProfileTab(
                         onLike = { onToggleLike(post) },
                         onRepost = { onToggleRepost(post) },
                         onDelete = { onDeletePost(post) },
+                        onSelectProfile = { onSelectProfile(post.author) },
                         onOpenThread = { onOpenPostThread(post) },
                         onOpenMedia = onOpenMedia
                     )
+                }
+            }
+        }
+    }
+
+    if (relationSheet != null) {
+        val currentRelationSheet = relationSheet!!
+        val sheetActors = when (currentRelationSheet) {
+            ProfileRelationSheet.Followers -> followers
+            ProfileRelationSheet.Follows -> follows
+        }
+        ModalBottomSheet(
+            onDismissRequest = { relationSheet = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    Text(
+                        text = when (currentRelationSheet) {
+                            ProfileRelationSheet.Followers -> stringResource(R.string.profile_followers)
+                            ProfileRelationSheet.Follows -> stringResource(R.string.profile_following_count, follows.size)
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (sheetActors.isEmpty()) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Text(
+                                text = stringResource(R.string.search_no_results),
+                                modifier = Modifier.padding(14.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    items(sheetActors, key = { it.did }) { actor ->
+                        ActorRow(
+                            actor = actor,
+                            customization = customization,
+                            onSelect = {
+                                relationSheet = null
+                                onSelectProfile(actor)
+                            },
+                            onToggleFollow = { onToggleFollow(actor) }
+                        )
+                    }
                 }
             }
         }
@@ -1901,6 +2018,7 @@ private fun PostCard(
     onLike: () -> Unit,
     onRepost: () -> Unit,
     onDelete: () -> Unit,
+    onSelectProfile: () -> Unit,
     onOpenThread: () -> Unit,
     onOpenMedia: (PostMediaUi) -> Unit
 ) {
@@ -1935,7 +2053,9 @@ private fun PostCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(url = post.author.avatar, size = 38.dp)
+                Box(modifier = Modifier.clickable(onClick = onSelectProfile)) {
+                    Avatar(url = post.author.avatar, size = 38.dp)
+                }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(post.author.displayName, fontWeight = FontWeight.Bold)

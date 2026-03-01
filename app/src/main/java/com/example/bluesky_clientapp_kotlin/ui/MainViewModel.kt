@@ -641,6 +641,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val MAX_POST_LENGTH = 300
         private const val SEARCH_DEBOUNCE_MS = 350L
+        private const val SEARCH_USERS_LIMIT = 60
     }
 
     private fun queueSearch(query: String, immediate: Boolean) {
@@ -662,7 +663,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         runCatching {
             coroutineScope {
                 val posts = async { repository.searchPosts(query) }
-                val actors = async { repository.searchActors(query) }
+                val actors = async { repository.searchActors(query, limit = SEARCH_USERS_LIMIT) }
                 state = state.copy(
                     searchPosts = posts.await(),
                     searchActors = actors.await(),
