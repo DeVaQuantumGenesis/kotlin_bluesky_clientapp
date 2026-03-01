@@ -182,6 +182,7 @@ private fun normalizeUrl(url: String): String {
 }
 
 @Composable
+@Suppress("DEPRECATION")
 private fun LinkifiedText(
     text: String,
     style: TextStyle,
