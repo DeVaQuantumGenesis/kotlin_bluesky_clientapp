@@ -1,0 +1,125 @@
+<resources>
+    <string name="app_name">KAKER</string>
+
+    <string name="login_title">BlueSky Client</string>
+    <string name="login_subtitle">ID(メール/ハンドル)とアプリパスワードでログイン</string>
+    <string name="identifier_label">Identifier</string>
+    <string name="app_password_label">App Password</string>
+    <string name="login_button">ログイン</string>
+
+    <string name="tab_home">ホーム</string>
+    <string name="tab_search">検索</string>
+    <string name="tab_notifications">通知</string>
+    <string name="tab_profile">プロフィール</string>
+    <string name="tab_settings">設定</string>
+    <string name="tab_xrpc">XRPC</string>
+
+    <string name="cd_post">投稿</string>
+    <string name="cd_menu">メニュー</string>
+    <string name="cd_logo">ロゴ</string>
+    <string name="cd_clear">クリア</string>
+    <string name="cd_search">検索</string>
+    <string name="cd_delete">削除</string>
+    <string name="cd_repost">リポスト</string>
+    <string name="cd_like">いいね</string>
+    <string name="cd_profile_banner">プロフィールバナー</string>
+
+    <string name="guest">ゲスト</string>
+    <string name="sidebar_follow_stats">%1$d フォロワー ・ %2$d フォロー</string>
+    <string name="feedback">フィードバック</string>
+    <string name="help">ヘルプ</string>
+
+    <string name="feed_mode_discover">おすすめ</string>
+    <string name="feed_mode_following">フォロー中</string>
+    <string name="home_status_prompt">最近どう？</string>
+
+    <string name="search_title">検索</string>
+    <string name="search_placeholder">投稿、ユーザー、フィードを検索</string>
+    <string name="search_hint">検索キーワードを入力すると、ユーザーと投稿を同時に検索します。</string>
+    <string name="search_no_results">検索結果が見つかりませんでした。</string>
+    <string name="search_users">ユーザー</string>
+    <string name="search_posts">投稿</string>
+
+    <string name="notifications_title">通知</string>
+    <string name="notifications_subtitle">リアルタイムアクティビティ</string>
+    <string name="notifications_metric">%1$d 件の更新</string>
+
+    <string name="profile_loading">プロフィールを読み込み中</string>
+    <string name="profile_handle_label">別プロフィールのハンドル</string>
+    <string name="open_button">開く</string>
+    <string name="followers_count_label">Followers %1$d</string>
+    <string name="follows_count_label">Follows %1$d</string>
+    <string name="profile_section_posts">投稿</string>
+    <string name="profile_section_replies">返信</string>
+    <string name="profile_section_media">メディア</string>
+    <string name="profile_section_likes">いいね</string>
+    <string name="profile_followers">Followers</string>
+    <string name="profile_empty_section">このセクションには表示できる投稿がありません</string>
+    <string name="follow">フォロー</string>
+    <string name="unfollow">フォロー解除</string>
+    <string name="profile_followers_count">%1$d フォロワー</string>
+    <string name="profile_following_count">%1$d フォロー中</string>
+    <string name="profile_posts_count">%1$d 投稿</string>
+
+    <string name="settings_title">設定</string>
+    <string name="settings_metric">アカウント</string>
+    <string name="account">アカウント</string>
+    <string name="logout_hint">ログアウトはここから実行できます。</string>
+    <string name="logout_button">ログアウト</string>
+
+    <string name="xrpc_title">XRPC Explorer</string>
+    <string name="xrpc_subtitle">任意のATProtoエンドポイントを実行</string>
+    <string name="xrpc_method_label">Method (例: app.bsky.feed.getTimeline)</string>
+    <string name="http_get">GET</string>
+    <string name="http_post">POST</string>
+    <string name="xrpc_get_params_label">GET Params(JSON)</string>
+    <string name="xrpc_post_body_label">POST Body(JSON)</string>
+    <string name="execute">実行</string>
+
+    <string name="customization">カスタマイズ</string>
+    <string name="animation_speed">アニメーション速度</string>
+    <string name="compact_cards">コンパクトカード</string>
+    <string name="quick_gestures">クイックジェスチャー</string>
+    <string name="expressive_background">背景の表現</string>
+
+    <string name="reply_count">返信 %1$d</string>
+    <string name="gesture_hint">ジェスチャー: ダブルタップでいいね、長押しでリポスト</string>
+
+    <string name="replies_count">リプライ %1$d</string>
+    <string name="no_replies">リプライはまだありません</string>
+    <string name="repost_count">リポスト %1$d</string>
+    <string name="like_count">いいね %1$d</string>
+
+    <string name="new_post">新規投稿</string>
+    <string name="composer_placeholder">今なにしてる？</string>
+    <string name="attach_media">画像・動画を添付</string>
+    <string name="remove_media">添付を外す</string>
+    <string name="image_post">画像</string>
+    <string name="video_post">動画</string>
+    <string name="video_selected_hint">動画を添付しました。投稿時にアップロードされます。</string>
+    <string name="remaining_chars">残り %1$d 文字</string>
+    <string name="close">閉じる</string>
+    <string name="post_button">投稿</string>
+
+    <string name="msg_fetch_thread_failed">スレッドの取得に失敗しました</string>
+    <string name="msg_enter_id_password">IDとアプリパスワードを入力してください</string>
+    <string name="msg_logged_in">ログインしました</string>
+    <string name="msg_logged_out">ログアウトしました</string>
+    <string name="msg_load_more_timeline_failed">タイムラインの追加取得に失敗しました</string>
+    <string name="msg_enter_handle">ハンドルを入力してください</string>
+    <string name="msg_enter_post_content">投稿内容を入力してください</string>
+    <string name="msg_post_max_length">投稿は%1$d文字以内で入力してください</string>
+    <string name="msg_posted">投稿しました</string>
+    <string name="msg_unsupported_media_type">このメディア形式はサポートされていません</string>
+    <string name="msg_media_read_failed">選択したメディアを読み込めませんでした</string>
+    <string name="msg_post_deleted">投稿を削除しました</string>
+    <string name="msg_like_failed">いいね操作に失敗しました</string>
+    <string name="msg_repost_failed">リポスト操作に失敗しました</string>
+    <string name="msg_enter_xrpc_method">XRPCメソッドを入力してください</string>
+    <string name="msg_restore_session_failed">セッション復元に失敗しました</string>
+    <string name="msg_initial_data_failed">初期データの取得に失敗しました</string>
+    <string name="msg_unknown_error">不明なエラー</string>
+    <string name="msg_session_refreshed_retry">セッションを更新しました。もう一度操作してください</string>
+    <string name="msg_auth_error_relogin">認証エラーが発生しました。必要な場合のみ設定からログアウトして再ログインしてください</string>
+    <string name="msg_search_failed">検索に失敗しました</string>
+</resources>

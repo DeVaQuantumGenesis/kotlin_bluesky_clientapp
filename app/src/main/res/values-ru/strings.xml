@@ -1,0 +1,125 @@
+<resources>
+    <string name="app_name">KAKER</string>
+
+    <string name="login_title">BlueSky Client</string>
+    <string name="login_subtitle">Войдите с ID (email/handle) и паролем приложения</string>
+    <string name="identifier_label">Identifier</string>
+    <string name="app_password_label">App Password</string>
+    <string name="login_button">Войти</string>
+
+    <string name="tab_home">Главная</string>
+    <string name="tab_search">Поиск</string>
+    <string name="tab_notifications">Уведомления</string>
+    <string name="tab_profile">Профиль</string>
+    <string name="tab_settings">Настройки</string>
+    <string name="tab_xrpc">XRPC</string>
+
+    <string name="cd_post">Пост</string>
+    <string name="cd_menu">Меню</string>
+    <string name="cd_logo">Логотип</string>
+    <string name="cd_clear">Очистить</string>
+    <string name="cd_search">Поиск</string>
+    <string name="cd_delete">Удалить</string>
+    <string name="cd_repost">Репост</string>
+    <string name="cd_like">Нравится</string>
+    <string name="cd_profile_banner">Баннер профиля</string>
+
+    <string name="guest">Гость</string>
+    <string name="sidebar_follow_stats">%1$d подписчиков ・ %2$d подписок</string>
+    <string name="feedback">Обратная связь</string>
+    <string name="help">Справка</string>
+
+    <string name="feed_mode_discover">Рекомендации</string>
+    <string name="feed_mode_following">Подписки</string>
+    <string name="home_status_prompt">Что нового?</string>
+
+    <string name="search_title">Поиск</string>
+    <string name="search_placeholder">Поиск постов, пользователей и лент</string>
+    <string name="search_hint">Введите ключевое слово для одновременного поиска пользователей и постов.</string>
+    <string name="search_no_results">Ничего не найдено.</string>
+    <string name="search_users">Пользователи</string>
+    <string name="search_posts">Посты</string>
+
+    <string name="notifications_title">Уведомления</string>
+    <string name="notifications_subtitle">Активность в реальном времени</string>
+    <string name="notifications_metric">%1$d обновлений</string>
+
+    <string name="profile_loading">Загрузка профиля</string>
+    <string name="profile_handle_label">Handle другого профиля</string>
+    <string name="open_button">Открыть</string>
+    <string name="followers_count_label">Followers %1$d</string>
+    <string name="follows_count_label">Follows %1$d</string>
+    <string name="profile_section_posts">Посты</string>
+    <string name="profile_section_replies">Ответы</string>
+    <string name="profile_section_media">Медиа</string>
+    <string name="profile_section_likes">Лайки</string>
+    <string name="profile_followers">Followers</string>
+    <string name="profile_empty_section">В этом разделе нет постов для отображения.</string>
+    <string name="follow">Подписаться</string>
+    <string name="unfollow">Отписаться</string>
+    <string name="profile_followers_count">%1$d подписчиков</string>
+    <string name="profile_following_count">%1$d подписок</string>
+    <string name="profile_posts_count">%1$d постов</string>
+
+    <string name="settings_title">Настройки</string>
+    <string name="settings_metric">Аккаунт</string>
+    <string name="account">Аккаунт</string>
+    <string name="logout_hint">Здесь можно выйти из аккаунта.</string>
+    <string name="logout_button">Выйти</string>
+
+    <string name="xrpc_title">XRPC Explorer</string>
+    <string name="xrpc_subtitle">Вызов любого ATProto endpoint</string>
+    <string name="xrpc_method_label">Method (например: app.bsky.feed.getTimeline)</string>
+    <string name="http_get">GET</string>
+    <string name="http_post">POST</string>
+    <string name="xrpc_get_params_label">GET Params(JSON)</string>
+    <string name="xrpc_post_body_label">POST Body(JSON)</string>
+    <string name="execute">Выполнить</string>
+
+    <string name="customization">Персонализация</string>
+    <string name="animation_speed">Скорость анимации</string>
+    <string name="compact_cards">Компактные карточки</string>
+    <string name="quick_gestures">Быстрые жесты</string>
+    <string name="expressive_background">Выразительный фон</string>
+
+    <string name="reply_count">Ответов: %1$d</string>
+    <string name="gesture_hint">Жесты: двойной тап - лайк, долгий тап - репост</string>
+
+    <string name="replies_count">Ответы %1$d</string>
+    <string name="no_replies">Пока нет ответов</string>
+    <string name="repost_count">Репост %1$d</string>
+    <string name="like_count">Лайк %1$d</string>
+
+    <string name="new_post">Новый пост</string>
+    <string name="composer_placeholder">Что нового?</string>
+    <string name="attach_media">Прикрепить фото/видео</string>
+    <string name="remove_media">Убрать вложение</string>
+    <string name="image_post">Изображение</string>
+    <string name="video_post">Видео</string>
+    <string name="video_selected_hint">Видео прикреплено. Оно будет загружено при публикации.</string>
+    <string name="remaining_chars">Осталось символов: %1$d</string>
+    <string name="close">Закрыть</string>
+    <string name="post_button">Пост</string>
+
+    <string name="msg_fetch_thread_failed">Не удалось загрузить тред.</string>
+    <string name="msg_enter_id_password">Введите ID и пароль приложения.</string>
+    <string name="msg_logged_in">Вход выполнен.</string>
+    <string name="msg_logged_out">Вы вышли из аккаунта.</string>
+    <string name="msg_load_more_timeline_failed">Не удалось загрузить дополнительные посты ленты.</string>
+    <string name="msg_enter_handle">Введите handle.</string>
+    <string name="msg_enter_post_content">Введите текст поста.</string>
+    <string name="msg_post_max_length">Пост должен быть не длиннее %1$d символов.</string>
+    <string name="msg_posted">Пост опубликован.</string>
+    <string name="msg_unsupported_media_type">Этот формат медиа не поддерживается.</string>
+    <string name="msg_media_read_failed">Не удалось прочитать выбранный файл.</string>
+    <string name="msg_post_deleted">Пост удален.</string>
+    <string name="msg_like_failed">Не удалось выполнить операцию лайка.</string>
+    <string name="msg_repost_failed">Не удалось выполнить операцию репоста.</string>
+    <string name="msg_enter_xrpc_method">Введите XRPC метод.</string>
+    <string name="msg_restore_session_failed">Не удалось восстановить сессию.</string>
+    <string name="msg_initial_data_failed">Не удалось загрузить начальные данные.</string>
+    <string name="msg_unknown_error">Неизвестная ошибка</string>
+    <string name="msg_session_refreshed_retry">Сессия обновлена. Повторите действие.</string>
+    <string name="msg_auth_error_relogin">Ошибка аутентификации. При необходимости выйдите в настройках и войдите снова.</string>
+    <string name="msg_search_failed">Ошибка поиска.</string>
+</resources>

@@ -1,0 +1,125 @@
+<resources>
+    <string name="app_name">KAKER</string>
+
+    <string name="login_title">BlueSky Client</string>
+    <string name="login_subtitle">ID(이메일/핸들)와 앱 비밀번호로 로그인</string>
+    <string name="identifier_label">Identifier</string>
+    <string name="app_password_label">App Password</string>
+    <string name="login_button">로그인</string>
+
+    <string name="tab_home">홈</string>
+    <string name="tab_search">검색</string>
+    <string name="tab_notifications">알림</string>
+    <string name="tab_profile">프로필</string>
+    <string name="tab_settings">설정</string>
+    <string name="tab_xrpc">XRPC</string>
+
+    <string name="cd_post">게시</string>
+    <string name="cd_menu">메뉴</string>
+    <string name="cd_logo">로고</string>
+    <string name="cd_clear">지우기</string>
+    <string name="cd_search">검색</string>
+    <string name="cd_delete">삭제</string>
+    <string name="cd_repost">리포스트</string>
+    <string name="cd_like">좋아요</string>
+    <string name="cd_profile_banner">프로필 배너</string>
+
+    <string name="guest">게스트</string>
+    <string name="sidebar_follow_stats">팔로워 %1$d명 ・ 팔로잉 %2$d명</string>
+    <string name="feedback">피드백</string>
+    <string name="help">도움말</string>
+
+    <string name="feed_mode_discover">추천</string>
+    <string name="feed_mode_following">팔로잉</string>
+    <string name="home_status_prompt">무슨 일이 있나요?</string>
+
+    <string name="search_title">검색</string>
+    <string name="search_placeholder">게시물, 사용자, 피드 검색</string>
+    <string name="search_hint">키워드를 입력하면 사용자와 게시물을 동시에 검색합니다.</string>
+    <string name="search_no_results">검색 결과가 없습니다.</string>
+    <string name="search_users">사용자</string>
+    <string name="search_posts">게시물</string>
+
+    <string name="notifications_title">알림</string>
+    <string name="notifications_subtitle">실시간 활동</string>
+    <string name="notifications_metric">업데이트 %1$d건</string>
+
+    <string name="profile_loading">프로필 로딩 중</string>
+    <string name="profile_handle_label">다른 프로필 핸들</string>
+    <string name="open_button">열기</string>
+    <string name="followers_count_label">Followers %1$d</string>
+    <string name="follows_count_label">Follows %1$d</string>
+    <string name="profile_section_posts">게시물</string>
+    <string name="profile_section_replies">답글</string>
+    <string name="profile_section_media">미디어</string>
+    <string name="profile_section_likes">좋아요</string>
+    <string name="profile_followers">Followers</string>
+    <string name="profile_empty_section">이 섹션에 표시할 게시물이 없습니다.</string>
+    <string name="follow">팔로우</string>
+    <string name="unfollow">팔로우 취소</string>
+    <string name="profile_followers_count">팔로워 %1$d명</string>
+    <string name="profile_following_count">팔로잉 %1$d명</string>
+    <string name="profile_posts_count">게시물 %1$d개</string>
+
+    <string name="settings_title">설정</string>
+    <string name="settings_metric">계정</string>
+    <string name="account">계정</string>
+    <string name="logout_hint">여기에서 로그아웃할 수 있습니다.</string>
+    <string name="logout_button">로그아웃</string>
+
+    <string name="xrpc_title">XRPC Explorer</string>
+    <string name="xrpc_subtitle">ATProto 엔드포인트 호출</string>
+    <string name="xrpc_method_label">Method (예: app.bsky.feed.getTimeline)</string>
+    <string name="http_get">GET</string>
+    <string name="http_post">POST</string>
+    <string name="xrpc_get_params_label">GET Params(JSON)</string>
+    <string name="xrpc_post_body_label">POST Body(JSON)</string>
+    <string name="execute">실행</string>
+
+    <string name="customization">커스터마이징</string>
+    <string name="animation_speed">애니메이션 속도</string>
+    <string name="compact_cards">컴팩트 카드</string>
+    <string name="quick_gestures">빠른 제스처</string>
+    <string name="expressive_background">배경 표현</string>
+
+    <string name="reply_count">답글 %1$d</string>
+    <string name="gesture_hint">제스처: 두 번 탭하면 좋아요, 길게 누르면 리포스트</string>
+
+    <string name="replies_count">답글 %1$d</string>
+    <string name="no_replies">아직 답글이 없습니다</string>
+    <string name="repost_count">리포스트 %1$d</string>
+    <string name="like_count">좋아요 %1$d</string>
+
+    <string name="new_post">새 게시물</string>
+    <string name="composer_placeholder">무슨 일이 있나요?</string>
+    <string name="attach_media">이미지/동영상 첨부</string>
+    <string name="remove_media">첨부 제거</string>
+    <string name="image_post">이미지</string>
+    <string name="video_post">동영상</string>
+    <string name="video_selected_hint">동영상을 첨부했습니다. 게시 시 업로드됩니다.</string>
+    <string name="remaining_chars">남은 글자 수 %1$d</string>
+    <string name="close">닫기</string>
+    <string name="post_button">게시</string>
+
+    <string name="msg_fetch_thread_failed">스레드를 불러오지 못했습니다.</string>
+    <string name="msg_enter_id_password">ID와 앱 비밀번호를 입력해 주세요.</string>
+    <string name="msg_logged_in">로그인되었습니다.</string>
+    <string name="msg_logged_out">로그아웃되었습니다.</string>
+    <string name="msg_load_more_timeline_failed">타임라인을 추가로 불러오지 못했습니다.</string>
+    <string name="msg_enter_handle">핸들을 입력해 주세요.</string>
+    <string name="msg_enter_post_content">게시물 내용을 입력해 주세요.</string>
+    <string name="msg_post_max_length">게시물은 %1$d자 이하여야 합니다.</string>
+    <string name="msg_posted">게시했습니다.</string>
+    <string name="msg_unsupported_media_type">지원되지 않는 미디어 형식입니다.</string>
+    <string name="msg_media_read_failed">선택한 미디어를 읽지 못했습니다.</string>
+    <string name="msg_post_deleted">게시물을 삭제했습니다.</string>
+    <string name="msg_like_failed">좋아요 처리에 실패했습니다.</string>
+    <string name="msg_repost_failed">리포스트 처리에 실패했습니다.</string>
+    <string name="msg_enter_xrpc_method">XRPC 메서드를 입력해 주세요.</string>
+    <string name="msg_restore_session_failed">세션 복원에 실패했습니다.</string>
+    <string name="msg_initial_data_failed">초기 데이터를 불러오지 못했습니다.</string>
+    <string name="msg_unknown_error">알 수 없는 오류</string>
+    <string name="msg_session_refreshed_retry">세션이 갱신되었습니다. 다시 시도해 주세요.</string>
+    <string name="msg_auth_error_relogin">인증 오류가 발생했습니다. 필요하면 설정에서 로그아웃 후 다시 로그인해 주세요.</string>
+    <string name="msg_search_failed">검색에 실패했습니다.</string>
+</resources>
