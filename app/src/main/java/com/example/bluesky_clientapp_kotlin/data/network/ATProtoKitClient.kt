@@ -1,5 +1,6 @@
 package com.example.bluesky_clientapp_kotlin.data.network
 
+import com.example.bluesky_clientapp_kotlin.data.model.AuthMethod
 import com.example.bluesky_clientapp_kotlin.data.model.AuthSession
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
@@ -15,6 +16,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLParameter
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,6 +25,41 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
+
+data class OAuthAuthorizationRequest(
+    val authorizationUrl: String,
+    val state: String,
+    val codeVerifier: String,
+    val redirectUri: String,
+    val clientId: String
+)
+
+object BlueskyOAuthConfig {
+    const val LOOPBACK_HOST = "127.0.0.1"
+    const val LOOPBACK_REDIRECT_PATH = "/oauth/callback"
+    const val SCOPE = "atproto transition:generic"
+    const val PAR_ENDPOINT = "https://bsky.social/oauth/par"
+    const val AUTHORIZATION_ENDPOINT = "https://bsky.social/oauth/authorize"
+    const val TOKEN_ENDPOINT = "https://bsky.social/oauth/token"
+
+    fun redirectUriForPort(port: Int): String {
+        return "http://$LOOPBACK_HOST:$port$LOOPBACK_REDIRECT_PATH"
+    }
+
+    fun clientIdForRedirectUri(redirectUri: String): String {
+        val encodedRedirect = redirectUri.encodeURLParameter()
+        val encodedScope = SCOPE.encodeURLParameter()
+        return "http://localhost?redirect_uri=$encodedRedirect&scope=$encodedScope"
+    }
+
+    fun isLoopbackRedirectUri(value: String): Boolean {
+        return value.startsWith("http://$LOOPBACK_HOST:", ignoreCase = true) &&
+            value.contains(LOOPBACK_REDIRECT_PATH)
+    }
+}
 
 class ATProtoKitClient(
     private val json: Json = Json {
@@ -50,6 +87,104 @@ class ATProtoKitClient(
 
     fun close() {
         httpClient.close()
+    }
+
+    suspend fun createOAuthAuthorizationRequest(redirectUri: String): OAuthAuthorizationRequest {
+        require(BlueskyOAuthConfig.isLoopbackRedirectUri(redirectUri)) {
+            "Invalid OAuth redirect URI. Use a 127.0.0.1 loopback redirect URI."
+        }
+        val state = randomUrlSafeValue(24)
+        val verifier = randomUrlSafeValue(64)
+        val challenge = createCodeChallenge(verifier)
+        val clientId = BlueskyOAuthConfig.clientIdForRedirectUri(redirectUri)
+        val requestUri = createPushedAuthorizationRequest(
+            state = state,
+            codeChallenge = challenge,
+            redirectUri = redirectUri,
+            clientId = clientId
+        )
+        val authorizationUrl = buildString {
+            append(BlueskyOAuthConfig.AUTHORIZATION_ENDPOINT)
+            append("?client_id=${clientId.encodeURLParameter()}")
+            append("&request_uri=${requestUri.encodeURLParameter()}")
+        }
+        return OAuthAuthorizationRequest(
+            authorizationUrl = authorizationUrl,
+            state = state,
+            codeVerifier = verifier,
+            redirectUri = redirectUri,
+            clientId = clientId
+        )
+    }
+
+    private suspend fun createPushedAuthorizationRequest(
+        state: String,
+        codeChallenge: String,
+        redirectUri: String,
+        clientId: String
+    ): String {
+        val formParams = mapOf(
+            "client_id" to clientId,
+            "response_type" to "code",
+            "redirect_uri" to redirectUri,
+            "scope" to BlueskyOAuthConfig.SCOPE,
+            "state" to state,
+            "code_challenge" to codeChallenge,
+            "code_challenge_method" to "S256"
+        )
+        val encodedBody = formParams.entries.joinToString("&") { (key, value) ->
+            "${key.encodeURLParameter()}=${value.encodeURLParameter()}"
+        }
+        val response = httpClient.request(BlueskyOAuthConfig.PAR_ENDPOINT) {
+            method = HttpMethod.Post
+            accept(ContentType.Application.Json)
+            contentType(ContentType.Application.FormUrlEncoded)
+            setBody(encodedBody)
+        }
+        val responseText = response.bodyAsText()
+        val payload = parseJsonResponse(
+            endpoint = "oauth/par",
+            statusCode = response.status.value,
+            responseText = responseText
+        )
+        return payload.stringValue("request_uri")
+            ?: throw IllegalStateException("PAR response did not include request_uri.")
+    }
+
+    suspend fun createOAuthSession(
+        code: String,
+        codeVerifier: String,
+        redirectUri: String,
+        clientId: String
+    ): AuthSession {
+        val tokenResponse = requestOAuthToken(
+            mapOf(
+                "grant_type" to "authorization_code",
+                "code" to code,
+                "redirect_uri" to redirectUri,
+                "client_id" to clientId,
+                "code_verifier" to codeVerifier
+            )
+        )
+        val accessToken = tokenResponse.stringValue("access_token")
+            ?: throw IllegalStateException("OAuth token response did not include an access token.")
+        val refreshToken = tokenResponse.stringValue("refresh_token")
+            ?: throw IllegalStateException("OAuth token response did not include a refresh token.")
+        val did = tokenResponse.stringValue("sub")
+            ?: tokenResponse.stringValue("did")
+            ?: "oauth:pending"
+        val provisionalSession = AuthSession(
+            did = did,
+            handle = did,
+            accessJwt = accessToken,
+            refreshJwt = refreshToken,
+            serviceEndpoint = DEFAULT_SERVICE,
+            authMethod = AuthMethod.OAuth,
+            oauthClientId = clientId,
+            oauthRedirectUri = redirectUri
+        )
+        setSession(provisionalSession)
+        return enrichOAuthIdentity(provisionalSession).also { setSession(it) }
     }
 
     suspend fun createSession(identifier: String, appPassword: String): AuthSession {
@@ -109,18 +244,106 @@ class ATProtoKitClient(
 
     private suspend fun refreshSessionInternal(): AuthSession {
         return refreshMutex.withLock {
-            val response = requestJson(
-                endpoint = "com.atproto.server.refreshSession",
-                method = HttpMethod.Post,
-                body = JsonObject(emptyMap()),
-                requiresAuth = true,
-                useRefreshToken = true,
-                retryOnAuth = false
-            )
-            val refreshed = extractSession(response, fallback = session)
+            val activeSession = session ?: throw IllegalStateException("Not authenticated")
+            val refreshed = when (activeSession.authMethod) {
+                AuthMethod.OAuth -> refreshOAuthSession(activeSession)
+                AuthMethod.LegacyAppPassword -> refreshLegacySession(activeSession)
+            }
             setSession(refreshed)
             refreshed
         }
+    }
+
+    private suspend fun refreshLegacySession(activeSession: AuthSession): AuthSession {
+        val response = requestJson(
+            endpoint = "com.atproto.server.refreshSession",
+            method = HttpMethod.Post,
+            body = JsonObject(emptyMap()),
+            requiresAuth = true,
+            useRefreshToken = true,
+            retryOnAuth = false
+        )
+        return extractSession(response, fallback = activeSession)
+    }
+
+    private suspend fun refreshOAuthSession(activeSession: AuthSession): AuthSession {
+        val clientId = activeSession.oauthClientId
+            ?: throw IllegalStateException("OAuth client_id is missing from saved session.")
+        val tokenResponse = requestOAuthToken(
+            mapOf(
+                "grant_type" to "refresh_token",
+                "refresh_token" to activeSession.refreshJwt,
+                "client_id" to clientId
+            )
+        )
+        val accessToken = tokenResponse.stringValue("access_token")
+            ?: throw IllegalStateException("OAuth refresh response did not include an access token.")
+        val refreshed = activeSession.copy(
+            accessJwt = accessToken,
+            refreshJwt = tokenResponse.stringValue("refresh_token") ?: activeSession.refreshJwt
+        )
+        setSession(refreshed)
+        return enrichOAuthIdentity(refreshed)
+    }
+
+    private suspend fun requestOAuthToken(formParams: Map<String, String>): JsonObject {
+        val encodedBody = formParams.entries.joinToString("&") { (key, value) ->
+            "${key.encodeURLParameter()}=${value.encodeURLParameter()}"
+        }
+        val response = httpClient.request(BlueskyOAuthConfig.TOKEN_ENDPOINT) {
+            method = HttpMethod.Post
+            accept(ContentType.Application.Json)
+            contentType(ContentType.Application.FormUrlEncoded)
+            setBody(encodedBody)
+        }
+        val responseText = response.bodyAsText()
+        return parseJsonResponse(
+            endpoint = "oauth/token",
+            statusCode = response.status.value,
+            responseText = responseText
+        )
+    }
+
+    private suspend fun enrichOAuthIdentity(source: AuthSession): AuthSession {
+        val sessionResponse = runCatching {
+            requestJson(
+                endpoint = "com.atproto.server.getSession",
+                method = HttpMethod.Get,
+                requiresAuth = true,
+                retryOnAuth = false
+            )
+        }.getOrNull()
+
+        val profileResponse = runCatching {
+            val actor = (sessionResponse?.stringValue("did") ?: source.did).takeIf { it.startsWith("did:") }
+                ?: return@runCatching null
+            requestJson(
+                endpoint = "app.bsky.actor.getProfile",
+                method = HttpMethod.Get,
+                query = mapOf("actor" to actor),
+                requiresAuth = true,
+                retryOnAuth = false
+            )
+        }.getOrNull()
+
+        val did = sessionResponse?.stringValue("did")
+            ?: profileResponse?.stringValue("did")
+            ?: source.did
+        val handle = sessionResponse?.stringValue("handle")
+            ?: profileResponse?.stringValue("handle")
+            ?: source.handle
+        require(did.isNotBlank() && did != "oauth:pending") { "OAuth login completed but did could not be resolved." }
+        require(handle.isNotBlank() && handle != "oauth:pending") { "OAuth login completed but handle could not be resolved." }
+
+        return source.copy(
+            did = did,
+            handle = handle,
+            serviceEndpoint = extractServiceEndpoint(
+                source = sessionResponse ?: JsonObject(emptyMap()),
+                fallback = source
+            ),
+            authMethod = AuthMethod.OAuth
+        )
     }
 
     private suspend fun requestJson(
@@ -143,7 +366,11 @@ class ATProtoKitClient(
                 parameter(key, value)
             }
             if (requiresAuth) {
-                val token = if (useRefreshToken) activeSession?.refreshJwt else activeSession?.accessJwt
+                val token = if (useRefreshToken && activeSession?.authMethod == AuthMethod.LegacyAppPassword) {
+                    activeSession.refreshJwt
+                } else {
+                    activeSession?.accessJwt
+                }
                 require(!token.isNullOrBlank()) { "Not authenticated" }
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
@@ -192,7 +419,11 @@ class ATProtoKitClient(
             accept(ContentType.Application.Json)
             contentType(contentType)
             if (requiresAuth) {
-                val token = if (useRefreshToken) activeSession?.refreshJwt else activeSession?.accessJwt
+                val token = if (useRefreshToken && activeSession?.authMethod == AuthMethod.LegacyAppPassword) {
+                    activeSession.refreshJwt
+                } else {
+                    activeSession?.accessJwt
+                }
                 require(!token.isNullOrBlank()) { "Not authenticated" }
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
@@ -260,7 +491,8 @@ class ATProtoKitClient(
             handle = handle,
             accessJwt = accessJwt,
             refreshJwt = refreshJwt,
-            serviceEndpoint = extractServiceEndpoint(source, fallback)
+            serviceEndpoint = extractServiceEndpoint(source, fallback),
+            authMethod = AuthMethod.LegacyAppPassword
         )
     }
 
@@ -277,7 +509,21 @@ class ATProtoKitClient(
         return session?.serviceEndpoint?.removeSuffix("/") ?: DEFAULT_SERVICE
     }
 
+    private fun randomUrlSafeValue(size: Int): String {
+        val randomBytes = ByteArray(size)
+        secureRandom.nextBytes(randomBytes)
+        return Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(randomBytes)
+    }
+
+    private fun createCodeChallenge(codeVerifier: String): String {
+        val hashed = MessageDigest.getInstance("SHA-256").digest(codeVerifier.toByteArray(Charsets.UTF_8))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hashed)
+    }
+
     companion object {
         private const val DEFAULT_SERVICE = "https://bsky.social"
+        private val secureRandom = SecureRandom()
     }
 }

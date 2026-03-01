@@ -2,10 +2,10 @@
     <string name="app_name">KAKER</string>
 
     <string name="login_title">BlueSky Client</string>
-    <string name="login_subtitle">ID(メール/ハンドル)とアプリパスワードでログイン</string>
+    <string name="login_subtitle">BlueSky OAuthでログイン</string>
     <string name="identifier_label">Identifier</string>
     <string name="app_password_label">App Password</string>
-    <string name="login_button">ログイン</string>
+    <string name="login_button">OAuthでログイン</string>
 
     <string name="tab_home">ホーム</string>
     <string name="tab_search">検索</string>
@@ -89,6 +89,9 @@
     <string name="no_replies">リプライはまだありません</string>
     <string name="repost_count">リポスト %1$d</string>
     <string name="like_count">いいね %1$d</string>
+    <string name="translate_post">翻訳</string>
+    <string name="translating">翻訳中...</string>
+    <string name="translated_label">翻訳結果</string>
 
     <string name="new_post">新規投稿</string>
     <string name="composer_placeholder">今なにしてる？</string>
@@ -121,5 +124,10 @@
     <string name="msg_unknown_error">不明なエラー</string>
     <string name="msg_session_refreshed_retry">セッションを更新しました。もう一度操作してください</string>
     <string name="msg_auth_error_relogin">認証エラーが発生しました。必要な場合のみ設定からログアウトして再ログインしてください</string>
+    <string name="msg_opening_oauth">ブラウザでBlueSky認証を開始します</string>
+    <string name="msg_oauth_browser_launch_failed">ブラウザを起動できませんでした。端末設定を確認して再度お試しください</string>
+    <string name="msg_oauth_cancelled">OAuthログインがキャンセルされました</string>
+    <string name="msg_oauth_invalid_state">OAuthコールバック検証に失敗しました。再度ログインしてください</string>
     <string name="msg_search_failed">検索に失敗しました</string>
+    <string name="msg_translation_failed">翻訳に失敗しました。もう一度お試しください</string>
 </resources>

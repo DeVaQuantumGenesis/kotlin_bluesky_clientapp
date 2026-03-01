@@ -6,15 +6,9 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,14 +18,14 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.text.ClickableText
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -55,6 +49,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Repeat
@@ -63,31 +58,36 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AppBarRow
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationItemIconPosition
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarArrangement
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -99,7 +99,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.WideNavigationRail
+import androidx.compose.material3.WideNavigationRailItem
+import androidx.compose.material3.WideNavigationRailValue
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberWideNavigationRailState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -114,14 +118,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -131,11 +131,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -151,8 +150,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.sin
 
 private data class UiCustomization(
     val motionScale: Float = 1f,
@@ -184,6 +181,38 @@ private enum class ProfileRelationSheet {
 }
 
 private const val UrlAnnotationTag = "url"
+private val CompactPrimaryTabs = listOf(AppTab.Home, AppTab.Search, AppTab.Notifications, AppTab.Profile)
+private val RailTabs = listOf(
+    AppTab.Home,
+    AppTab.Search,
+    AppTab.Notifications,
+    AppTab.Profile,
+    AppTab.Settings,
+    AppTab.Xrpc
+)
+
+private fun appTabIcon(tab: AppTab): ImageVector {
+    return when (tab) {
+        AppTab.Home -> Icons.Default.Home
+        AppTab.Search -> Icons.Default.Search
+        AppTab.Notifications -> Icons.Default.Notifications
+        AppTab.Profile -> Icons.Default.Person
+        AppTab.Settings -> Icons.Default.Settings
+        AppTab.Xrpc -> Icons.Default.Explore
+    }
+}
+
+@Composable
+private fun appTabLabel(tab: AppTab): String {
+    return when (tab) {
+        AppTab.Home -> stringResource(R.string.tab_home)
+        AppTab.Search -> stringResource(R.string.tab_search)
+        AppTab.Notifications -> stringResource(R.string.tab_notifications)
+        AppTab.Profile -> stringResource(R.string.tab_profile)
+        AppTab.Settings -> stringResource(R.string.tab_settings)
+        AppTab.Xrpc -> stringResource(R.string.tab_xrpc)
+    }
+}
 
 private fun normalizeUrl(url: String): String {
     return if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -252,6 +281,7 @@ private fun LinkifiedText(
 fun BlueskyClientApp(viewModel: MainViewModel = viewModel()) {
     val state = viewModel.state
     val snackbarHostState = remember { SnackbarHostState() }
+    val uriHandler = LocalUriHandler.current
     var selectedMedia by remember { mutableStateOf<PostMediaUi?>(null) }
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -272,9 +302,17 @@ fun BlueskyClientApp(viewModel: MainViewModel = viewModel()) {
     )
 
     LaunchedEffect(state.message) {
+        if (state.session == null) return@LaunchedEffect
         val message = state.message ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         viewModel.consumeMessage()
+    }
+
+    LaunchedEffect(state.oauthLoginUrl) {
+        val oauthUrl = state.oauthLoginUrl ?: return@LaunchedEffect
+        runCatching { uriHandler.openUri(oauthUrl) }
+            .onSuccess { viewModel.consumeOAuthLoginUrl() }
+            .onFailure { viewModel.onOAuthBrowserLaunchFailed() }
     }
 
     Box(
@@ -282,13 +320,19 @@ fun BlueskyClientApp(viewModel: MainViewModel = viewModel()) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        if (state.session == null) {
+        if (state.isSessionRestoring && state.session == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                ExpressiveCircularLoadingIndicator(
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        } else if (state.session == null) {
             LoginScreen(
-                identifier = state.identifier,
-                appPassword = state.appPassword,
+                message = state.message,
                 loading = state.isBusy,
-                onIdentifierChange = viewModel::updateIdentifier,
-                onPasswordChange = viewModel::updateAppPassword,
                 onLogin = viewModel::login
             )
         } else {
@@ -346,10 +390,13 @@ fun BlueskyClientApp(viewModel: MainViewModel = viewModel()) {
             rootPost = state.selectedPostThreadRoot,
             replies = state.selectedPostThreadReplies,
             isLoading = state.isPostThreadLoading,
+            postTranslations = state.postTranslations,
             onDismiss = viewModel::closePostThread,
             onToggleLike = viewModel::toggleLike,
             onToggleRepost = viewModel::toggleRepost,
             onDeletePost = viewModel::deletePost,
+            onPreparePostTranslation = viewModel::preparePostTranslation,
+            onTranslatePost = viewModel::translatePostToAppLanguage,
             onOpenMedia = { media -> selectedMedia = media }
         )
     }
@@ -362,13 +409,11 @@ fun BlueskyClientApp(viewModel: MainViewModel = viewModel()) {
     }
 }
 
+
 @Composable
 private fun LoginScreen(
-    identifier: String,
-    appPassword: String,
+    message: String?,
     loading: Boolean,
-    onIdentifierChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
     onLogin: () -> Unit
 ) {
     Box(
@@ -398,21 +443,6 @@ private fun LoginScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                OutlinedTextField(
-                    value = identifier,
-                    onValueChange = onIdentifierChange,
-                    label = { Text(stringResource(R.string.identifier_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = appPassword,
-                    onValueChange = onPasswordChange,
-                    label = { Text(stringResource(R.string.app_password_label)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
                 Button(
                     onClick = onLogin,
                     enabled = !loading,
@@ -421,12 +451,18 @@ private fun LoginScreen(
                 ) {
                     if (loading) {
                         ExpressiveCircularLoadingIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
+                            modifier = Modifier.size(18.dp)
                         )
                     } else {
                         Text(stringResource(R.string.login_button))
                     }
+                }
+                if (!message.isNullOrBlank()) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
@@ -464,209 +500,269 @@ private fun MainScaffold(
     onExpressiveBackgroundChange: (Float) -> Unit,
     onQuickGesturesChange: (Boolean) -> Unit
 ) {
-    val tabs = listOf(
-        AppTab.Home,
-        AppTab.Search,
-        AppTab.Notifications,
-        AppTab.Profile
-    )
     var homeFeedMode by rememberSaveable { mutableStateOf(HomeFeedMode.Discover) }
     val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
+    val wideRailState = rememberWideNavigationRailState(initialValue = WideNavigationRailValue.Expanded)
     val scope = rememberCoroutineScope()
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ExpressiveSidebar(
-                activeTab = state.activeTab,
-                profile = state.selfProfile,
-                handle = state.session?.handle.orEmpty(),
-                followersCount = state.selfFollowers.size,
-                followsCount = state.selfFollows.size,
-                onNavigate = { tab ->
-                    onTabSelected(tab)
-                    scope.launch { drawerState.close() }
-                }
-            )
-        }
-    ) {
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                AppTopBar(
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val useWideRail = maxWidth >= 840.dp
+        val shortBarArrangement =
+            if (maxWidth >= 600.dp) ShortNavigationBarArrangement.Centered
+            else ShortNavigationBarArrangement.EqualWeight
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = !useWideRail,
+            drawerContent = {
+                ExpressiveSidebar(
                     activeTab = state.activeTab,
+                    profile = state.selfProfile,
                     handle = state.session?.handle.orEmpty(),
-                    onMenuClick = {
-                        scope.launch { drawerState.open() }
+                    followersCount = state.selfFollowers.size,
+                    followsCount = state.selfFollows.size,
+                    onNavigate = { tab ->
+                        onTabSelected(tab)
+                        scope.launch { drawerState.close() }
                     }
                 )
-            },
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    onClick = onOpenComposer,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_post))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.post_button))
-                }
-            },
-            bottomBar = {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
-                ) {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = state.activeTab == tab,
-                            onClick = { onTabSelected(tab) },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            icon = {
-                                Icon(
-                                    imageVector = when (tab) {
-                                        AppTab.Home -> Icons.Default.Home
-                                        AppTab.Search -> Icons.Default.Search
-                                        AppTab.Notifications -> Icons.Default.Notifications
-                                        AppTab.Profile -> Icons.Default.Person
-                                        AppTab.Settings -> Icons.Default.Settings
-                                        AppTab.Xrpc -> Icons.Default.Explore
-                                    },
-                                    contentDescription = tab.name
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = when (tab) {
-                                        AppTab.Home -> stringResource(R.string.tab_home)
-                                        AppTab.Search -> stringResource(R.string.tab_search)
-                                        AppTab.Notifications -> stringResource(R.string.tab_notifications)
-                                        AppTab.Profile -> stringResource(R.string.tab_profile)
-                                        AppTab.Settings -> stringResource(R.string.tab_settings)
-                                        AppTab.Xrpc -> stringResource(R.string.tab_xrpc)
-                                    }
-                                )
-                            },
-                            alwaysShowLabel = true
-                        )
-                    }
-                }
             }
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                if (state.isBusy) {
-                    ExpressiveLoadingStrip(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
-                Crossfade(
-                    targetState = state.activeTab,
-                    modifier = Modifier.fillMaxSize(),
-                    animationSpec = tween(
-                        durationMillis = (220 * customization.motionScale.coerceAtLeast(0.35f)).toInt(),
-                        easing = FastOutSlowInEasing
-                    ),
-                    label = "main-tab"
-                ) { tab ->
-                    when (tab) {
-                    AppTab.Home -> TimelineTab(
-                        sessionDid = state.session?.did,
-                        posts = state.timeline,
-                        isRefreshing = state.isBusy,
-                        isLoadingMore = state.isLoadingMoreTimeline,
-                        feedMode = homeFeedMode,
-                        customization = customization,
-                        onRefresh = onRefresh,
-                        onFeedModeChange = { homeFeedMode = it },
-                        onOpenComposer = onOpenComposer,
-                        onToggleLike = onToggleLike,
-                        onToggleRepost = onToggleRepost,
-                        onDeletePost = onDeletePost,
-                        onSelectProfile = onSelectProfile,
-                        onOpenPostThread = onOpenPostThread,
-                        onOpenMedia = onOpenMedia,
-                        onLoadMore = onLoadMoreTimeline
-                    )
-
-                    AppTab.Search -> SearchTab(
-                        query = state.searchQuery,
-                        isLoading = state.isSearchLoading,
-                        hasSearched = state.hasSearchExecuted,
-                        errorMessage = state.searchErrorMessage,
-                        actors = state.searchActors,
-                        posts = state.searchPosts,
-                        sessionDid = state.session?.did,
-                        customization = customization,
-                        onQueryChange = onSearchQueryChange,
-                        onSearch = onSearch,
-                        onSelectProfile = onSelectProfile,
-                        onToggleFollow = onToggleFollow,
-                        onToggleLike = onToggleLike,
-                        onToggleRepost = onToggleRepost,
-                        onDeletePost = onDeletePost,
-                        onOpenPostThread = onOpenPostThread,
-                        onOpenMedia = onOpenMedia
-                    )
-
-                    AppTab.Notifications -> NotificationTab(
-                        notifications = state.notifications,
-                        customization = customization,
-                        onSelectProfile = onSelectProfile
-                    )
-
-                    AppTab.Profile -> ProfileTab(
-                        profile = state.activeProfile,
-                        posts = state.activeProfileFeed,
-                        followers = state.followers,
-                        follows = state.follows,
-                        sessionDid = state.session?.did,
-                        customization = customization,
-                        onToggleFollow = onToggleFollow,
-                        onToggleLike = onToggleLike,
-                        onToggleRepost = onToggleRepost,
-                        onDeletePost = onDeletePost,
-                        onOpenPostThread = onOpenPostThread,
-                        onOpenMedia = onOpenMedia,
-                        onSelectProfile = onSelectProfile,
-                        onSelectProfileByHandle = onSelectProfileByHandle
-                    )
-
-                    AppTab.Settings -> SettingsTab(
+        ) {
+            Scaffold(
+                containerColor = Color.Transparent,
+                topBar = {
+                    AppTopBar(
+                        activeTab = state.activeTab,
                         handle = state.session?.handle.orEmpty(),
-                        customization = customization,
-                        onMotionScaleChange = onMotionScaleChange,
-                        onCompactCardsChange = onCompactCardsChange,
-                        onExpressiveBackgroundChange = onExpressiveBackgroundChange,
-                        onQuickGesturesChange = onQuickGesturesChange,
-                        onLogout = onLogout
+                        onMenuClick = {
+                            if (useWideRail) {
+                                scope.launch {
+                                    if (wideRailState.targetValue == WideNavigationRailValue.Expanded) {
+                                        wideRailState.collapse()
+                                    } else {
+                                        wideRailState.expand()
+                                    }
+                                }
+                            } else {
+                                scope.launch { drawerState.open() }
+                            }
+                        },
+                        onQuickNavigate = onTabSelected
                     )
+                },
+                snackbarHost = { SnackbarHost(snackbarHostState) },
+                floatingActionButton = {
+                    ExtendedFloatingActionButton(
+                        onClick = onOpenComposer,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_post))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.post_button))
+                    }
+                },
+                bottomBar = {
+                    if (!useWideRail) {
+                        ShortNavigationBar(
+                            arrangement = shortBarArrangement,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
+                        ) {
+                            CompactPrimaryTabs.forEach { tab ->
+                                ShortNavigationBarItem(
+                                    selected = state.activeTab == tab,
+                                    onClick = { onTabSelected(tab) },
+                                    iconPosition = if (shortBarArrangement == ShortNavigationBarArrangement.Centered) {
+                                        NavigationItemIconPosition.Start
+                                    } else {
+                                        NavigationItemIconPosition.Top
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = appTabIcon(tab),
+                                            contentDescription = appTabLabel(tab)
+                                        )
+                                    },
+                                    label = { Text(appTabLabel(tab)) }
+                                )
+                            }
+                        }
+                    }
+                }
+            ) { innerPadding ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    if (useWideRail) {
+                        WideNavigationRail(
+                            state = wideRailState,
+                            modifier = Modifier.fillMaxHeight()
+                        ) {
+                            RailTabs.forEach { tab ->
+                                WideNavigationRailItem(
+                                    railExpanded = wideRailState.targetValue == WideNavigationRailValue.Expanded,
+                                    selected = state.activeTab == tab,
+                                    onClick = { onTabSelected(tab) },
+                                    icon = {
+                                        Icon(
+                                            imageVector = appTabIcon(tab),
+                                            contentDescription = appTabLabel(tab)
+                                        )
+                                    },
+                                    label = { Text(appTabLabel(tab)) }
+                                )
+                            }
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (state.isBusy) {
+                            ExpressiveLoadingStrip(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                        Crossfade(
+                            targetState = state.activeTab,
+                            modifier = Modifier.fillMaxSize(),
+                            animationSpec = tween(
+                                durationMillis = (220 * customization.motionScale.coerceAtLeast(0.35f)).toInt(),
+                                easing = FastOutSlowInEasing
+                            ),
+                            label = "main-tab"
+                        ) { tab ->
+                            val maxTabContentWidth = when (tab) {
+                                AppTab.Home -> 980.dp
+                                AppTab.Search -> 940.dp
+                                AppTab.Notifications -> 920.dp
+                                AppTab.Profile -> 960.dp
+                                AppTab.Settings -> 860.dp
+                                AppTab.Xrpc -> 980.dp
+                            }
+                            ResponsiveContentFrame(
+                                enabled = useWideRail,
+                                maxWidth = maxTabContentWidth
+                            ) {
+                                when (tab) {
+                                    AppTab.Home -> TimelineTab(
+                                        sessionDid = state.session?.did,
+                                        posts = state.timeline,
+                                        isRefreshing = state.isBusy,
+                                        isLoadingMore = state.isLoadingMoreTimeline,
+                                        feedMode = homeFeedMode,
+                                        customization = customization,
+                                        onRefresh = onRefresh,
+                                        onFeedModeChange = { homeFeedMode = it },
+                                        onOpenComposer = onOpenComposer,
+                                        onToggleLike = onToggleLike,
+                                        onToggleRepost = onToggleRepost,
+                                        onDeletePost = onDeletePost,
+                                        onSelectProfile = onSelectProfile,
+                                        onOpenPostThread = onOpenPostThread,
+                                        onOpenMedia = onOpenMedia,
+                                        onLoadMore = onLoadMoreTimeline
+                                    )
 
-                    AppTab.Xrpc -> XrpcTab(
-                        method = state.rawHttpMethod,
-                        endpoint = state.rawEndpoint,
-                        paramsJson = state.rawParamsJson,
-                        bodyJson = state.rawBodyJson,
-                        result = state.rawResult,
-                        customization = customization,
-                        onMethodChanged = onRawMethodChanged,
-                        onEndpointChanged = onRawEndpointChanged,
-                        onParamsChanged = onRawParamsChanged,
-                        onBodyChanged = onRawBodyChanged,
-                        onRun = onRunRawXrpc
-                    )
+                                    AppTab.Search -> SearchTab(
+                                        query = state.searchQuery,
+                                        isLoading = state.isSearchLoading,
+                                        hasSearched = state.hasSearchExecuted,
+                                        errorMessage = state.searchErrorMessage,
+                                        actors = state.searchActors,
+                                        posts = state.searchPosts,
+                                        sessionDid = state.session?.did,
+                                        customization = customization,
+                                        onQueryChange = onSearchQueryChange,
+                                        onSearch = onSearch,
+                                        onSelectProfile = onSelectProfile,
+                                        onToggleFollow = onToggleFollow,
+                                        onToggleLike = onToggleLike,
+                                        onToggleRepost = onToggleRepost,
+                                        onDeletePost = onDeletePost,
+                                        onOpenPostThread = onOpenPostThread,
+                                        onOpenMedia = onOpenMedia
+                                    )
+
+                                    AppTab.Notifications -> NotificationTab(
+                                        notifications = state.notifications,
+                                        customization = customization,
+                                        onSelectProfile = onSelectProfile
+                                    )
+
+                                    AppTab.Profile -> ProfileTab(
+                                        profile = state.activeProfile,
+                                        posts = state.activeProfileFeed,
+                                        followers = state.followers,
+                                        follows = state.follows,
+                                        sessionDid = state.session?.did,
+                                        customization = customization,
+                                        onToggleFollow = onToggleFollow,
+                                        onToggleLike = onToggleLike,
+                                        onToggleRepost = onToggleRepost,
+                                        onDeletePost = onDeletePost,
+                                        onOpenPostThread = onOpenPostThread,
+                                        onOpenMedia = onOpenMedia,
+                                        onSelectProfile = onSelectProfile,
+                                        onSelectProfileByHandle = onSelectProfileByHandle
+                                    )
+
+                                    AppTab.Settings -> SettingsTab(
+                                        handle = state.session?.handle.orEmpty(),
+                                        customization = customization,
+                                        onMotionScaleChange = onMotionScaleChange,
+                                        onCompactCardsChange = onCompactCardsChange,
+                                        onExpressiveBackgroundChange = onExpressiveBackgroundChange,
+                                        onQuickGesturesChange = onQuickGesturesChange,
+                                        onLogout = onLogout
+                                    )
+
+                                    AppTab.Xrpc -> XrpcTab(
+                                        method = state.rawHttpMethod,
+                                        endpoint = state.rawEndpoint,
+                                        paramsJson = state.rawParamsJson,
+                                        bodyJson = state.rawBodyJson,
+                                        result = state.rawResult,
+                                        customization = customization,
+                                        onMethodChanged = onRawMethodChanged,
+                                        onEndpointChanged = onRawEndpointChanged,
+                                        onParamsChanged = onRawParamsChanged,
+                                        onBodyChanged = onRawBodyChanged,
+                                        onRun = onRunRawXrpc
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ResponsiveContentFrame(
+    enabled: Boolean,
+    maxWidth: Dp,
+    content: @Composable () -> Unit
+) {
+    if (!enabled) {
+        content()
+        return
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(max = maxWidth)
+        ) {
+            content()
         }
     }
 }
@@ -676,8 +772,11 @@ private fun MainScaffold(
 private fun AppTopBar(
     activeTab: AppTab,
     handle: String,
-    onMenuClick: () -> Unit
+    onMenuClick: () -> Unit,
+    onQuickNavigate: (AppTab) -> Unit
 ) {
+    val settingsLabel = stringResource(R.string.tab_settings)
+    val xrpcLabel = stringResource(R.string.tab_xrpc)
     val title = when (activeTab) {
         AppTab.Home -> ""
         AppTab.Search -> stringResource(R.string.tab_search)
@@ -715,6 +814,28 @@ private fun AppTopBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(end = 12.dp)
                 )
+                AppBarRow(
+                    maxItemCount = 2,
+                    overflowIndicator = {
+                        IconButton(onClick = { it.show() }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.cd_menu)
+                            )
+                        }
+                    }
+                ) {
+                    clickableItem(
+                        onClick = { onQuickNavigate(AppTab.Settings) },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        label = settingsLabel
+                    )
+                    clickableItem(
+                        onClick = { onQuickNavigate(AppTab.Xrpc) },
+                        icon = { Icon(Icons.Default.Explore, contentDescription = null) },
+                        label = xrpcLabel
+                    )
+                }
             } else {
                 Text(
                     text = "@$handle",
@@ -839,11 +960,7 @@ private fun TimelineTab(
     val listState = rememberLazyListState()
     var selectedTrend by rememberSaveable { mutableStateOf("OpenAI") }
     val trendTopics = listOf("Israel-Iran War", "OpenAI", "B-Movies", "Dateline", "Music")
-    val feedPosts = if (feedMode == HomeFeedMode.Following) {
-        posts.filterIndexed { index, _ -> index % 2 == 0 }.ifEmpty { posts }
-    } else {
-        posts
-    }
+    val feedPosts = posts
 
     LaunchedEffect(listState.firstVisibleItemIndex, feedPosts.size) {
         if (feedPosts.isNotEmpty() && listState.firstVisibleItemIndex >= feedPosts.lastIndex - 3) {
@@ -854,7 +971,8 @@ private fun TimelineTab(
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        indicator = {}
     ) {
         LazyColumn(
             state = listState,
@@ -893,8 +1011,7 @@ private fun TimelineTab(
                         contentAlignment = Alignment.Center
                     ) {
                         ExpressiveCircularLoadingIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.5.dp
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -904,158 +1021,28 @@ private fun TimelineTab(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun ExpressiveLoadingStrip(modifier: Modifier = Modifier) {
-    Row(
+    Box(
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        contentAlignment = Alignment.Center
     ) {
-        ExpressiveLinearLoadingIndicator(
-            modifier = Modifier.weight(1f),
-            isWavy = true
-        )
-        ExpressiveCircularLoadingIndicator(
-            modifier = Modifier.size(24.dp),
-            strokeWidth = 2.5.dp
+        ContainedLoadingIndicator(
+            modifier = Modifier.size(28.dp),
+            indicatorColor = MaterialTheme.colorScheme.primary
         )
     }
 }
 
 @Composable
-private fun ExpressiveLinearLoadingIndicator(
-    modifier: Modifier = Modifier,
-    isWavy: Boolean = false
-) {
-    val transition = rememberInfiniteTransition(label = "expressive-linear")
-    val segmentHead by transition.animateFloat(
-        initialValue = -0.4f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1450, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "segment-head"
-    )
-    val wavePhase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2.0 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 920, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wave-phase"
-    )
-    val trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-    val activeColor = MaterialTheme.colorScheme.primary
-    Canvas(modifier = modifier.height(14.dp)) {
-        val centerY = size.height / 2f
-        val strokeWidth = size.height * 0.36f
-        drawLine(
-            color = trackColor,
-            start = Offset(0f, centerY),
-            end = Offset(size.width, centerY),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round
-        )
-        drawCircle(
-            color = trackColor,
-            radius = strokeWidth / 2f,
-            center = Offset(size.width - strokeWidth * 0.3f, centerY)
-        )
-
-        val segmentLength = size.width * 0.34f
-        val rawStart = segmentHead * size.width
-        val rawEnd = rawStart + segmentLength
-        val start = rawStart.coerceAtLeast(0f)
-        val end = rawEnd.coerceAtMost(size.width - strokeWidth * 0.3f)
-
-        if (end > start + 1f) {
-            if (isWavy) {
-                val amplitude = size.height * 0.24f
-                val path = Path().apply {
-                    moveTo(start, centerY)
-                    var x = start
-                    val step = 5f
-                    while (x <= end) {
-                        val normalized = (x - start) / segmentLength
-                        val angle = normalized * (4.0 * PI).toFloat() + wavePhase
-                        val y = centerY + amplitude * sin(angle.toDouble()).toFloat()
-                        lineTo(x, y)
-                        x += step
-                    }
-                }
-                drawPath(
-                    path = path,
-                    color = activeColor,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                )
-            } else {
-                drawLine(
-                    color = activeColor,
-                    start = Offset(start, centerY),
-                    end = Offset(end, centerY),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round
-                )
-            }
-        }
-    }
-}
-
-@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun ExpressiveCircularLoadingIndicator(
-    modifier: Modifier = Modifier,
-    strokeWidth: Dp = 3.dp
+    modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "expressive-circular")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
+    LoadingIndicator(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.primary
     )
-    val sweep by transition.animateFloat(
-        initialValue = 48f,
-        targetValue = 126f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "sweep"
-    )
-    val trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-    val activeColor = MaterialTheme.colorScheme.primary
-    Canvas(modifier = modifier) {
-        val strokePx = strokeWidth.toPx().coerceAtMost(size.minDimension / 4f)
-        val diameter = size.minDimension - strokePx
-        val topLeft = Offset(
-            x = (size.width - diameter) / 2f,
-            y = (size.height - diameter) / 2f
-        )
-        val arcSize = Size(diameter, diameter)
-
-        drawArc(
-            color = trackColor,
-            startAngle = 0f,
-            sweepAngle = 300f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = strokePx, cap = StrokeCap.Round)
-        )
-        drawArc(
-            color = activeColor,
-            startAngle = rotation,
-            sweepAngle = sweep,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = strokePx, cap = StrokeCap.Round)
-        )
-    }
 }
 
 @Composable
@@ -1508,27 +1495,6 @@ private fun ProfileTab(
                 }
             }
         }
-        if (followers.isNotEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.profile_followers),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 14.dp)
-                )
-            }
-            items(followers.take(6), key = { it.did }) { actor ->
-                Box(modifier = Modifier.padding(horizontal = 14.dp)) {
-                    ActorRow(
-                        actor = actor,
-                        customization = customization,
-                        onSelect = { onSelectProfile(actor) },
-                        onToggleFollow = { onToggleFollow(actor) }
-                    )
-                }
-            }
-        }
-
         if (sectionPosts.isEmpty()) {
             item {
                 Surface(
@@ -2407,10 +2373,13 @@ private fun PostThreadSheet(
     rootPost: PostUi?,
     replies: List<PostUi>,
     isLoading: Boolean,
+    postTranslations: Map<String, PostTranslationState>,
     onDismiss: () -> Unit,
     onToggleLike: (PostUi) -> Unit,
     onToggleRepost: (PostUi) -> Unit,
     onDeletePost: (PostUi) -> Unit,
+    onPreparePostTranslation: (PostUi) -> Unit,
+    onTranslatePost: (PostUi) -> Unit,
     onOpenMedia: (PostMediaUi) -> Unit
 ) {
     val root = rootPost ?: return
@@ -2439,9 +2408,12 @@ private fun PostThreadSheet(
                 ThreadPostItem(
                     post = root,
                     isRoot = true,
+                    translationState = postTranslations[root.uri],
                     onToggleLike = { onToggleLike(root) },
                     onToggleRepost = { onToggleRepost(root) },
                     onDeletePost = { onDeletePost(root) },
+                    onPreparePostTranslation = { onPreparePostTranslation(root) },
+                    onTranslatePost = { onTranslatePost(root) },
                     onOpenMedia = onOpenMedia
                 )
             }
@@ -2462,8 +2434,7 @@ private fun PostThreadSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         ExpressiveCircularLoadingIndicator(
-                            modifier = Modifier.size(26.dp),
-                            strokeWidth = 2.6.dp
+                            modifier = Modifier.size(26.dp)
                         )
                     }
                 }
@@ -2486,9 +2457,12 @@ private fun PostThreadSheet(
                     ThreadPostItem(
                         post = reply,
                         isRoot = false,
+                        translationState = postTranslations[reply.uri],
                         onToggleLike = { onToggleLike(reply) },
                         onToggleRepost = { onToggleRepost(reply) },
                         onDeletePost = { onDeletePost(reply) },
+                        onPreparePostTranslation = { onPreparePostTranslation(reply) },
+                        onTranslatePost = { onTranslatePost(reply) },
                         onOpenMedia = onOpenMedia
                     )
                 }
@@ -2501,11 +2475,18 @@ private fun PostThreadSheet(
 private fun ThreadPostItem(
     post: PostUi,
     isRoot: Boolean,
+    translationState: PostTranslationState?,
     onToggleLike: () -> Unit,
     onToggleRepost: () -> Unit,
     onDeletePost: () -> Unit,
+    onPreparePostTranslation: () -> Unit,
+    onTranslatePost: () -> Unit,
     onOpenMedia: (PostMediaUi) -> Unit
 ) {
+    LaunchedEffect(post.uri) {
+        onPreparePostTranslation()
+    }
+
     Surface(
         shape = RoundedCornerShape(if (isRoot) 20.dp else 16.dp),
         color = if (isRoot) {
@@ -2539,6 +2520,54 @@ private fun ThreadPostItem(
                 text = post.text,
                 style = if (isRoot) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium
             )
+            if (translationState?.canTranslate == true) {
+                TextButton(
+                    onClick = onTranslatePost,
+                    enabled = !translationState.isTranslating
+                ) {
+                    Text(
+                        text = if (translationState.isTranslating) {
+                            stringResource(R.string.translating)
+                        } else {
+                            stringResource(R.string.translate_post)
+                        }
+                    )
+                }
+            }
+            val translatedText = translationState?.translatedText
+            if (!translatedText.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.translated_label),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = translatedText,
+                            style = if (isRoot) {
+                                MaterialTheme.typography.bodyLarge
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            },
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+            if (!translationState?.errorMessage.isNullOrBlank()) {
+                Text(
+                    text = translationState?.errorMessage.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             if (post.media.isNotEmpty()) {
                 PostMediaGallery(
                     media = post.media,

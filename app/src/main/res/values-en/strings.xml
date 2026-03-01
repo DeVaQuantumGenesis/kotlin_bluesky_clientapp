@@ -2,10 +2,10 @@
     <string name="app_name">KAKER</string>
 
     <string name="login_title">BlueSky Client</string>
-    <string name="login_subtitle">Sign in with your ID (email/handle) and app password</string>
+    <string name="login_subtitle">Sign in with BlueSky OAuth</string>
     <string name="identifier_label">Identifier</string>
     <string name="app_password_label">App Password</string>
-    <string name="login_button">Log In</string>
+    <string name="login_button">Continue with OAuth</string>
 
     <string name="tab_home">Home</string>
     <string name="tab_search">Search</string>
@@ -89,6 +89,9 @@
     <string name="no_replies">No replies yet</string>
     <string name="repost_count">Repost %1$d</string>
     <string name="like_count">Like %1$d</string>
+    <string name="translate_post">Translate</string>
+    <string name="translating">Translating...</string>
+    <string name="translated_label">Translation</string>
 
     <string name="new_post">New Post</string>
     <string name="composer_placeholder">What is happening?</string>
@@ -121,5 +124,10 @@
     <string name="msg_unknown_error">Unknown error</string>
     <string name="msg_session_refreshed_retry">Session refreshed. Please try again.</string>
     <string name="msg_auth_error_relogin">Authentication error occurred. Log out from Settings and log in again if needed.</string>
+    <string name="msg_opening_oauth">Opening browser for BlueSky OAuth login.</string>
+    <string name="msg_oauth_browser_launch_failed">Could not open the browser. Check device settings and try again.</string>
+    <string name="msg_oauth_cancelled">OAuth login was cancelled.</string>
+    <string name="msg_oauth_invalid_state">OAuth callback validation failed. Please sign in again.</string>
     <string name="msg_search_failed">Search failed.</string>
+    <string name="msg_translation_failed">Translation failed. Please try again.</string>
 </resources>

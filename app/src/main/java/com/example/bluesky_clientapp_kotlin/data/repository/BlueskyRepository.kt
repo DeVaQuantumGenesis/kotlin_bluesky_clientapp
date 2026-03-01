@@ -10,6 +10,7 @@ import com.example.bluesky_clientapp_kotlin.data.model.PostUi
 import com.example.bluesky_clientapp_kotlin.data.model.PostThreadUi
 import com.example.bluesky_clientapp_kotlin.data.model.TimelinePage
 import com.example.bluesky_clientapp_kotlin.data.network.ATProtoKitClient
+import com.example.bluesky_clientapp_kotlin.data.network.OAuthAuthorizationRequest
 import com.example.bluesky_clientapp_kotlin.data.network.arrayValue
 import com.example.bluesky_clientapp_kotlin.data.network.asObjectOrNull
 import com.example.bluesky_clientapp_kotlin.data.network.objectValue
@@ -28,6 +29,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 class BlueskyRepository(
     private val client: ATProtoKitClient,
@@ -38,29 +40,43 @@ class BlueskyRepository(
         explicitNulls = false
     }
 ) {
+    private val timelineCache = ConcurrentHashMap<String, CacheEntry<TimelinePage>>()
+    private val authorFeedCache = ConcurrentHashMap<String, CacheEntry<TimelinePage>>()
+    private val profileCache = ConcurrentHashMap<String, CacheEntry<ActorUi>>()
+    private val followersCache = ConcurrentHashMap<String, CacheEntry<ActorPage>>()
+    private val followsCache = ConcurrentHashMap<String, CacheEntry<ActorPage>>()
+
     suspend fun restoreSession(): AuthSession? {
         val session = sessionStore.sessionFlow.firstOrNull()
         client.setSession(session)
-        if (session == null) return null
-        return runCatching {
-            val refreshed = client.refreshSession()
-            sessionStore.saveSession(refreshed)
-            refreshed
-        }.getOrElse {
-            // Keep persisted session unless user explicitly logs out.
-            session
-        }
+        return session
     }
 
-    suspend fun login(identifier: String, appPassword: String): AuthSession {
-        val session = client.createSession(identifier = identifier, appPassword = appPassword)
+    suspend fun createOAuthAuthorizationRequest(redirectUri: String): OAuthAuthorizationRequest {
+        return client.createOAuthAuthorizationRequest(redirectUri = redirectUri)
+    }
+
+    suspend fun loginWithOAuth(
+        code: String,
+        codeVerifier: String,
+        redirectUri: String,
+        clientId: String
+    ): AuthSession {
+        val session = client.createOAuthSession(
+            code = code,
+            codeVerifier = codeVerifier,
+            redirectUri = redirectUri,
+            clientId = clientId
+        )
         sessionStore.saveSession(session)
+        clearCaches()
         return session
     }
 
     suspend fun logout() {
         client.setSession(null)
         sessionStore.clearSession()
+        clearCaches()
     }
 
     fun close() {
@@ -73,74 +89,71 @@ class BlueskyRepository(
         return refreshed
     }
 
-    suspend fun getTimeline(limit: Int = 40, cursor: String? = null): TimelinePage {
-        val timelineQuery = linkedMapOf("limit" to limit.toString())
-        if (!cursor.isNullOrBlank()) timelineQuery["cursor"] = cursor
+    suspend fun getTimeline(limit: Int = 40, cursor: String? = null, forceRefresh: Boolean = false): TimelinePage {
+        val cacheKey = cacheTimelineKey(limit = limit, cursor = cursor)
+        if (!forceRefresh) {
+            timelineCache.freshValue(cacheKey, TIMELINE_CACHE_TTL_MS)?.let { return it }
+        }
+
+        val discoverQuery = linkedMapOf(
+            "limit" to limit.toString(),
+            "sort" to "latest",
+            "q" to "*"
+        )
+        if (!cursor.isNullOrBlank()) discoverQuery["cursor"] = cursor
 
         val timelineResponse = runCatching {
-            getAndSyncSession("app.bsky.feed.getTimeline", timelineQuery)
-        }.getOrElse { timelineError ->
-            if (isInvalidSessionError(timelineError.message)) throw timelineError
-            val fallbackQuery = linkedMapOf(
-                "limit" to limit.toString(),
-                "sort" to "latest",
-                "q" to "*"
-            )
+            // Prefer global latest posts for the home/discover feed.
+            getAndSyncSession("app.bsky.feed.searchPosts", discoverQuery)
+        }.getOrElse { discoverError ->
+            if (isInvalidSessionError(discoverError.message)) throw discoverError
+            val fallbackQuery = linkedMapOf("limit" to limit.toString())
             if (!cursor.isNullOrBlank()) fallbackQuery["cursor"] = cursor
-            getAndSyncSession("app.bsky.feed.searchPosts", fallbackQuery)
+            getAndSyncSession("app.bsky.feed.getTimeline", fallbackQuery)
         }
 
-        val timelinePosts = timelineResponse.arrayValue("feed").mapNotNull { it.asObjectOrNull()?.toPostUi() }
+        val timelinePosts = timelineResponse.arrayValue("posts").mapNotNull { it.asObjectOrNull()?.toPostUi() }
             .ifEmpty {
-                timelineResponse.arrayValue("posts").mapNotNull { it.asObjectOrNull()?.toPostUi() }
+                timelineResponse.arrayValue("feed").mapNotNull { it.asObjectOrNull()?.toPostUi() }
             }
+            .sortedByDescending { it.indexedAt }
 
-        // First page can be empty on some environments; provide a discover fallback.
-        if (timelinePosts.isEmpty() && cursor.isNullOrBlank()) {
-            val discoverQuery = mapOf(
-                "limit" to limit.toString(),
-                "sort" to "latest",
-                "q" to "*"
-            )
-            val discoverResponse = runCatching {
-                getAndSyncSession("app.bsky.feed.searchPosts", discoverQuery)
-            }.getOrNull()
-            if (discoverResponse != null) {
-                val discoverPosts = discoverResponse.arrayValue("posts").mapNotNull {
-                    it.asObjectOrNull()?.toPostUi()
-                }
-                if (discoverPosts.isNotEmpty()) {
-                    return TimelinePage(
-                        posts = discoverPosts,
-                        cursor = discoverResponse.stringValue("cursor")
-                    )
-                }
-            }
-        }
-
-        return TimelinePage(
+        val result = TimelinePage(
             posts = timelinePosts,
             cursor = timelineResponse.stringValue("cursor")
         )
+        timelineCache[cacheKey] = CacheEntry(value = result)
+        return result
     }
 
-    suspend fun getAuthorFeed(actor: String, limit: Int = 40): TimelinePage {
+    suspend fun getAuthorFeed(actor: String, limit: Int = 40, forceRefresh: Boolean = false): TimelinePage {
+        val normalizedActor = normalizeActor(actor)
+        val cacheKey = "$normalizedActor|$limit"
+        if (!forceRefresh) {
+            authorFeedCache.freshValue(cacheKey, AUTHOR_FEED_CACHE_TTL_MS)?.let { return it }
+        }
         val response = getAndSyncSession(
             endpoint = "app.bsky.feed.getAuthorFeed",
             query = mapOf("actor" to actor, "limit" to limit.toString())
         )
-        return TimelinePage(
+        val result = TimelinePage(
             posts = response.arrayValue("feed").mapNotNull { it.asObjectOrNull()?.toPostUi() },
             cursor = response.stringValue("cursor")
         )
+        authorFeedCache[cacheKey] = CacheEntry(value = result)
+        return result
     }
 
-    suspend fun getProfile(actor: String): ActorUi {
+    suspend fun getProfile(actor: String, forceRefresh: Boolean = false): ActorUi {
+        val cacheKey = normalizeActor(actor)
+        if (!forceRefresh) {
+            profileCache.freshValue(cacheKey, PROFILE_CACHE_TTL_MS)?.let { return it }
+        }
         val response = getAndSyncSession(
             endpoint = "app.bsky.actor.getProfile",
             query = mapOf("actor" to actor)
         )
-        return response.toActorUi()
+        return response.toActorUi().also { profileCache[cacheKey] = CacheEntry(value = it) }
     }
 
     suspend fun getPostThread(postUri: String, depth: Int = 6): PostThreadUi {
@@ -193,26 +206,40 @@ class BlueskyRepository(
         return response.arrayValue("actors").mapNotNull { it.asObjectOrNull()?.toActorUi() }
     }
 
-    suspend fun getFollowers(actor: String, limit: Int = 60): ActorPage {
+    suspend fun getFollowers(actor: String, limit: Int = 60, forceRefresh: Boolean = false): ActorPage {
+        val normalizedActor = normalizeActor(actor)
+        val cacheKey = "$normalizedActor|$limit"
+        if (!forceRefresh) {
+            followersCache.freshValue(cacheKey, RELATION_CACHE_TTL_MS)?.let { return it }
+        }
         val response = getAndSyncSession(
             endpoint = "app.bsky.graph.getFollowers",
             query = mapOf("actor" to actor, "limit" to limit.toString())
         )
-        return ActorPage(
+        val result = ActorPage(
             actors = response.arrayValue("followers").mapNotNull { it.asObjectOrNull()?.toActorUi() },
             cursor = response.stringValue("cursor")
         )
+        followersCache[cacheKey] = CacheEntry(value = result)
+        return result
     }
 
-    suspend fun getFollows(actor: String, limit: Int = 60): ActorPage {
+    suspend fun getFollows(actor: String, limit: Int = 60, forceRefresh: Boolean = false): ActorPage {
+        val normalizedActor = normalizeActor(actor)
+        val cacheKey = "$normalizedActor|$limit"
+        if (!forceRefresh) {
+            followsCache.freshValue(cacheKey, RELATION_CACHE_TTL_MS)?.let { return it }
+        }
         val response = getAndSyncSession(
             endpoint = "app.bsky.graph.getFollows",
             query = mapOf("actor" to actor, "limit" to limit.toString())
         )
-        return ActorPage(
+        val result = ActorPage(
             actors = response.arrayValue("follows").mapNotNull { it.asObjectOrNull()?.toActorUi() },
             cursor = response.stringValue("cursor")
         )
+        followsCache[cacheKey] = CacheEntry(value = result)
+        return result
     }
 
     suspend fun createPost(text: String, media: DraftMediaAttachment? = null): String {
@@ -225,11 +252,14 @@ class BlueskyRepository(
                 put("embed", embed)
             }
         }
-        return createRecord(collection = "app.bsky.feed.post", record = record)
+        val uri = createRecord(collection = "app.bsky.feed.post", record = record)
+        invalidateSocialCaches()
+        return uri
     }
 
     suspend fun deletePost(postUri: String) {
         deleteRecord(recordUri = postUri, fallbackCollection = "app.bsky.feed.post")
+        invalidateSocialCaches()
     }
 
     suspend fun likePost(postUri: String, postCid: String): String {
@@ -241,11 +271,14 @@ class BlueskyRepository(
                 put("cid", postCid)
             }
         }
-        return createRecord(collection = "app.bsky.feed.like", record = record)
+        val uri = createRecord(collection = "app.bsky.feed.like", record = record)
+        invalidateSocialCaches()
+        return uri
     }
 
     suspend fun unlikePost(likeUri: String) {
         deleteRecord(recordUri = likeUri, fallbackCollection = "app.bsky.feed.like")
+        invalidateSocialCaches()
     }
 
     suspend fun repostPost(postUri: String, postCid: String): String {
@@ -257,11 +290,14 @@ class BlueskyRepository(
                 put("cid", postCid)
             }
         }
-        return createRecord(collection = "app.bsky.feed.repost", record = record)
+        val uri = createRecord(collection = "app.bsky.feed.repost", record = record)
+        invalidateSocialCaches()
+        return uri
     }
 
     suspend fun unrepost(repostUri: String) {
         deleteRecord(recordUri = repostUri, fallbackCollection = "app.bsky.feed.repost")
+        invalidateSocialCaches()
     }
 
     suspend fun follow(actorDid: String): String {
@@ -270,11 +306,14 @@ class BlueskyRepository(
             put("subject", actorDid)
             put("createdAt", Instant.now().toString())
         }
-        return createRecord(collection = "app.bsky.graph.follow", record = record)
+        val uri = createRecord(collection = "app.bsky.graph.follow", record = record)
+        invalidateSocialCaches()
+        return uri
     }
 
     suspend fun unfollow(followUri: String) {
         deleteRecord(recordUri = followUri, fallbackCollection = "app.bsky.graph.follow")
+        invalidateSocialCaches()
     }
 
     suspend fun runRawGet(method: String, paramsJson: String): String {
@@ -425,5 +464,50 @@ class BlueskyRepository(
 
     private suspend fun syncCurrentSession() {
         client.currentSession()?.let { sessionStore.saveSession(it) }
+    }
+
+    private fun invalidateSocialCaches() {
+        timelineCache.clear()
+        authorFeedCache.clear()
+        profileCache.clear()
+        followersCache.clear()
+        followsCache.clear()
+    }
+
+    private fun clearCaches() {
+        invalidateSocialCaches()
+    }
+
+    private fun normalizeActor(actor: String): String {
+        return actor.trim().removePrefix("@").lowercase()
+    }
+
+    private fun cacheTimelineKey(limit: Int, cursor: String?): String {
+        return "$limit|${cursor.orEmpty()}"
+    }
+
+    private data class CacheEntry<T>(
+        val value: T,
+        val createdAtMs: Long = System.currentTimeMillis()
+    )
+
+    private fun <T> ConcurrentHashMap<String, CacheEntry<T>>.freshValue(
+        key: String,
+        ttlMs: Long
+    ): T? {
+        val entry = this[key] ?: return null
+        return if (System.currentTimeMillis() - entry.createdAtMs <= ttlMs) {
+            entry.value
+        } else {
+            remove(key)
+            null
+        }
+    }
+
+    companion object {
+        private const val TIMELINE_CACHE_TTL_MS = 20_000L
+        private const val AUTHOR_FEED_CACHE_TTL_MS = 45_000L
+        private const val PROFILE_CACHE_TTL_MS = 120_000L
+        private const val RELATION_CACHE_TTL_MS = 60_000L
     }
 }

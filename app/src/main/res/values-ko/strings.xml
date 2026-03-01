@@ -2,10 +2,10 @@
     <string name="app_name">KAKER</string>
 
     <string name="login_title">BlueSky Client</string>
-    <string name="login_subtitle">ID(이메일/핸들)와 앱 비밀번호로 로그인</string>
+    <string name="login_subtitle">BlueSky OAuth로 로그인</string>
     <string name="identifier_label">Identifier</string>
     <string name="app_password_label">App Password</string>
-    <string name="login_button">로그인</string>
+    <string name="login_button">OAuth로 로그인</string>
 
     <string name="tab_home">홈</string>
     <string name="tab_search">검색</string>
@@ -89,6 +89,9 @@
     <string name="no_replies">아직 답글이 없습니다</string>
     <string name="repost_count">리포스트 %1$d</string>
     <string name="like_count">좋아요 %1$d</string>
+    <string name="translate_post">번역</string>
+    <string name="translating">번역 중...</string>
+    <string name="translated_label">번역 결과</string>
 
     <string name="new_post">새 게시물</string>
     <string name="composer_placeholder">무슨 일이 있나요?</string>
@@ -121,5 +124,10 @@
     <string name="msg_unknown_error">알 수 없는 오류</string>
     <string name="msg_session_refreshed_retry">세션이 갱신되었습니다. 다시 시도해 주세요.</string>
     <string name="msg_auth_error_relogin">인증 오류가 발생했습니다. 필요하면 설정에서 로그아웃 후 다시 로그인해 주세요.</string>
+    <string name="msg_opening_oauth">BlueSky OAuth 로그인을 위해 브라우저를 엽니다.</string>
+    <string name="msg_oauth_browser_launch_failed">브라우저를 열 수 없습니다. 기기 설정을 확인한 뒤 다시 시도해 주세요.</string>
+    <string name="msg_oauth_cancelled">OAuth 로그인이 취소되었습니다.</string>
+    <string name="msg_oauth_invalid_state">OAuth 콜백 검증에 실패했습니다. 다시 로그인해 주세요.</string>
     <string name="msg_search_failed">검색에 실패했습니다.</string>
+    <string name="msg_translation_failed">번역에 실패했습니다. 다시 시도해 주세요.</string>
 </resources>

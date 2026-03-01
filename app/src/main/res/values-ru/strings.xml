@@ -2,10 +2,10 @@
     <string name="app_name">KAKER</string>
 
     <string name="login_title">BlueSky Client</string>
-    <string name="login_subtitle">Войдите с ID (email/handle) и паролем приложения</string>
+    <string name="login_subtitle">Войдите через BlueSky OAuth</string>
     <string name="identifier_label">Identifier</string>
     <string name="app_password_label">App Password</string>
-    <string name="login_button">Войти</string>
+    <string name="login_button">Войти через OAuth</string>
 
     <string name="tab_home">Главная</string>
     <string name="tab_search">Поиск</string>
@@ -89,6 +89,9 @@
     <string name="no_replies">Пока нет ответов</string>
     <string name="repost_count">Репост %1$d</string>
     <string name="like_count">Лайк %1$d</string>
+    <string name="translate_post">Перевести</string>
+    <string name="translating">Перевод...</string>
+    <string name="translated_label">Перевод</string>
 
     <string name="new_post">Новый пост</string>
     <string name="composer_placeholder">Что нового?</string>
@@ -121,5 +124,10 @@
     <string name="msg_unknown_error">Неизвестная ошибка</string>
     <string name="msg_session_refreshed_retry">Сессия обновлена. Повторите действие.</string>
     <string name="msg_auth_error_relogin">Ошибка аутентификации. При необходимости выйдите в настройках и войдите снова.</string>
+    <string name="msg_opening_oauth">Открываем браузер для входа через BlueSky OAuth.</string>
+    <string name="msg_oauth_browser_launch_failed">Не удалось открыть браузер. Проверьте настройки устройства и попробуйте снова.</string>
+    <string name="msg_oauth_cancelled">Вход через OAuth отменен.</string>
+    <string name="msg_oauth_invalid_state">Не удалось проверить OAuth callback. Войдите снова.</string>
     <string name="msg_search_failed">Ошибка поиска.</string>
+    <string name="msg_translation_failed">Не удалось выполнить перевод. Повторите попытку.</string>
 </resources>

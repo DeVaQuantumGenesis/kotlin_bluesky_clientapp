@@ -3,12 +3,21 @@ package com.example.bluesky_clientapp_kotlin.data.model
 import kotlinx.serialization.Serializable
 
 @Serializable
+enum class AuthMethod {
+    LegacyAppPassword,
+    OAuth
+}
+
+@Serializable
 data class AuthSession(
     val did: String,
     val handle: String,
     val accessJwt: String,
     val refreshJwt: String,
-    val serviceEndpoint: String = "https://bsky.social"
+    val serviceEndpoint: String = "https://bsky.social",
+    val authMethod: AuthMethod = AuthMethod.LegacyAppPassword,
+    val oauthClientId: String? = null,
+    val oauthRedirectUri: String? = null
 )
 
 data class ActorUi(

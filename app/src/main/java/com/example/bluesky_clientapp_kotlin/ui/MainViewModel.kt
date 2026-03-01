@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.os.LocaleList
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,6 +12,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bluesky_clientapp_kotlin.R
+import com.example.bluesky_clientapp_kotlin.data.ml.OnDeviceTranslationService
 import com.example.bluesky_clientapp_kotlin.data.model.ActorUi
 import com.example.bluesky_clientapp_kotlin.data.model.AuthSession
 import com.example.bluesky_clientapp_kotlin.data.model.DraftMediaAttachment
@@ -18,12 +20,23 @@ import com.example.bluesky_clientapp_kotlin.data.model.DraftMediaType
 import com.example.bluesky_clientapp_kotlin.data.model.NotificationUi
 import com.example.bluesky_clientapp_kotlin.data.model.PostUi
 import com.example.bluesky_clientapp_kotlin.data.network.ATProtoKitClient
+import com.example.bluesky_clientapp_kotlin.data.network.BlueskyOAuthConfig
+import com.example.bluesky_clientapp_kotlin.data.network.LoopbackOAuthCallbackServer
+import com.example.bluesky_clientapp_kotlin.data.network.OAuthAuthorizationRequest
 import com.example.bluesky_clientapp_kotlin.data.repository.BlueskyRepository
 import com.example.bluesky_clientapp_kotlin.data.store.SessionStore
+import java.util.Locale
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 enum class AppTab {
@@ -52,10 +65,19 @@ data class ComposerMediaUi(
     val type: ComposerMediaType
 )
 
+data class PostTranslationState(
+    val isDetectingLanguage: Boolean = false,
+    val detectedLanguageTag: String? = null,
+    val canTranslate: Boolean = false,
+    val isTranslating: Boolean = false,
+    val translatedText: String? = null,
+    val errorMessage: String? = null
+)
+
 data class UiState(
+    val isSessionRestoring: Boolean = false,
     val isBusy: Boolean = false,
-    val identifier: String = "",
-    val appPassword: String = "",
+    val oauthLoginUrl: String? = null,
     val session: AuthSession? = null,
     val activeTab: AppTab = AppTab.Home,
     val timeline: List<PostUi> = emptyList(),
@@ -82,6 +104,8 @@ data class UiState(
     val selectedPostThreadRoot: PostUi? = null,
     val selectedPostThreadReplies: List<PostUi> = emptyList(),
     val isPostThreadLoading: Boolean = false,
+    val appLanguageTag: String = Locale.getDefault().toLanguageTag(),
+    val postTranslations: Map<String, PostTranslationState> = emptyMap(),
     val rawHttpMethod: RawHttpMethod = RawHttpMethod.GET,
     val rawEndpoint: String = "app.bsky.feed.getTimeline",
     val rawParamsJson: String = "{\n  \"limit\": \"20\"\n}",
@@ -95,28 +119,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         client = ATProtoKitClient(),
         sessionStore = SessionStore(application)
     )
+    private val translationService = OnDeviceTranslationService()
 
-    var state by mutableStateOf(UiState())
+    var state by mutableStateOf(UiState(isSessionRestoring = true))
         private set
     private var searchJob: Job? = null
 
     init {
+        state = state.copy(appLanguageTag = getCurrentAppLanguageTag())
         viewModelScope.launch {
             restoreSession()
+        }
+        viewModelScope.launch {
+            oauthResultChannel.receiveAsFlow().collect { result ->
+                result.onSuccess { callbackUri ->
+                    handleOAuthRedirect(callbackUri)
+                }.onFailure { error ->
+                    clearPendingOAuthRequest()
+                    val message = if (error is TimeoutCancellationException) {
+                        stringRes(R.string.msg_oauth_cancelled)
+                    } else {
+                        error.message ?: stringRes(R.string.msg_oauth_cancelled)
+                    }
+                    state = state.copy(isBusy = false, message = message)
+                }
+            }
         }
     }
 
     override fun onCleared() {
+        translationService.close()
         repository.close()
         super.onCleared()
     }
 
-    fun updateIdentifier(value: String) {
-        state = state.copy(identifier = value)
+    fun consumeOAuthLoginUrl() {
+        state = state.copy(oauthLoginUrl = null)
     }
 
-    fun updateAppPassword(value: String) {
-        state = state.copy(appPassword = value)
+    fun onOAuthBrowserLaunchFailed() {
+        clearPendingOAuthRequest()
+        state = state.copy(
+            oauthLoginUrl = null,
+            isBusy = false,
+            message = stringRes(R.string.msg_oauth_browser_launch_failed)
+        )
     }
 
     fun updateSearchQuery(value: String) {
@@ -199,7 +246,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state = state.copy(
                 selectedPostThreadRoot = post,
                 selectedPostThreadReplies = emptyList(),
-                isPostThreadLoading = true
+                isPostThreadLoading = true,
+                postTranslations = emptyMap(),
+                appLanguageTag = getCurrentAppLanguageTag()
             )
             runCatching {
                 repository.getPostThread(post.uri)
@@ -222,8 +271,99 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         state = state.copy(
             selectedPostThreadRoot = null,
             selectedPostThreadReplies = emptyList(),
-            isPostThreadLoading = false
+            isPostThreadLoading = false,
+            postTranslations = emptyMap()
         )
+    }
+
+    fun preparePostTranslation(post: PostUi) {
+        if (post.text.isBlank()) return
+        val current = state.postTranslations[post.uri]
+        if (current?.isDetectingLanguage == true) return
+        if (current?.detectedLanguageTag != null) return
+
+        updatePostTranslation(post.uri) {
+            it.copy(isDetectingLanguage = true, errorMessage = null)
+        }
+
+        viewModelScope.launch {
+            val appLanguageTag = getCurrentAppLanguageTag()
+            state = state.copy(appLanguageTag = appLanguageTag)
+
+            val detectedLanguageTag = runCatching {
+                translationService.identifyLanguageTag(post.text)
+            }.getOrNull()
+
+            val canTranslate = detectedLanguageTag?.let { sourceTag ->
+                canTranslateBetween(sourceTag, appLanguageTag)
+            } ?: false
+
+            updatePostTranslation(post.uri) {
+                it.copy(
+                    isDetectingLanguage = false,
+                    detectedLanguageTag = detectedLanguageTag,
+                    canTranslate = canTranslate,
+                    errorMessage = null
+                )
+            }
+        }
+    }
+
+    fun translatePostToAppLanguage(post: PostUi) {
+        if (post.text.isBlank()) return
+        val appLanguageTag = getCurrentAppLanguageTag()
+        state = state.copy(appLanguageTag = appLanguageTag)
+
+        viewModelScope.launch {
+            val current = state.postTranslations[post.uri]
+            if (current?.isTranslating == true) return@launch
+
+            val detectedLanguageTag = current?.detectedLanguageTag ?: runCatching {
+                translationService.identifyLanguageTag(post.text)
+            }.getOrNull()
+
+            if (detectedLanguageTag == null || !canTranslateBetween(detectedLanguageTag, appLanguageTag)) {
+                updatePostTranslation(post.uri) {
+                    it.copy(
+                        isDetectingLanguage = false,
+                        detectedLanguageTag = detectedLanguageTag,
+                        canTranslate = false
+                    )
+                }
+                return@launch
+            }
+
+            updatePostTranslation(post.uri) {
+                it.copy(
+                    detectedLanguageTag = detectedLanguageTag,
+                    canTranslate = true,
+                    isTranslating = true,
+                    errorMessage = null
+                )
+            }
+
+            runCatching {
+                translationService.translate(
+                    text = post.text,
+                    sourceLanguageTag = detectedLanguageTag,
+                    targetLanguageTag = appLanguageTag
+                )
+            }.onSuccess { translated ->
+                updatePostTranslation(post.uri) {
+                    it.copy(
+                        isTranslating = false,
+                        translatedText = translated
+                    )
+                }
+            }.onFailure {
+                updatePostTranslation(post.uri) {
+                    it.copy(
+                        isTranslating = false,
+                        errorMessage = stringRes(R.string.msg_translation_failed)
+                    )
+                }
+            }
+        }
     }
 
     fun consumeMessage() {
@@ -249,22 +389,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun login() {
-        if (state.identifier.isBlank() || state.appPassword.isBlank()) {
-            state = state.copy(message = stringRes(R.string.msg_enter_id_password))
-            return
-        }
         viewModelScope.launch {
             runBusy {
-                val session = repository.login(
-                    identifier = state.identifier.trim(),
-                    appPassword = state.appPassword.trim()
+                clearPendingOAuthRequest()
+                state = state.copy(
+                    oauthLoginUrl = null,
+                    message = null
+                )
+                val request = startOAuthFlow(
+                    createRequest = { redirectUri ->
+                        repository.createOAuthAuthorizationRequest(redirectUri = redirectUri)
+                    }
                 )
                 state = state.copy(
-                    session = session,
-                    appPassword = "",
-                    message = stringRes(R.string.msg_logged_in)
+                    oauthLoginUrl = request.authorizationUrl,
+                    message = stringRes(R.string.msg_opening_oauth)
                 )
-                loadDashboard(session)
             }
         }
     }
@@ -272,17 +412,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         viewModelScope.launch {
             runBusy {
+                clearPendingOAuthRequest()
                 repository.logout()
-                state = UiState(message = stringRes(R.string.msg_logged_out))
+                state = UiState(
+                    isSessionRestoring = false,
+                    message = stringRes(R.string.msg_logged_out)
+                )
             }
         }
     }
 
     fun refreshHome() {
         viewModelScope.launch {
-            val session = state.session ?: return@launch
             runBusy {
-                loadDashboard(session)
+                refreshTimelineWithNewest()
             }
         }
     }
@@ -477,13 +620,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun restoreSession() {
+        state = state.copy(isSessionRestoring = true)
         val session = runCatching { repository.restoreSession() }
             .getOrElse { error ->
-                state = state.copy(message = error.message ?: stringRes(R.string.msg_restore_session_failed))
+                state = state.copy(
+                    isSessionRestoring = false,
+                    message = error.message ?: stringRes(R.string.msg_restore_session_failed)
+                )
                 null
             }
-            ?: return
-        state = state.copy(session = session)
+            ?: run {
+                state = state.copy(isSessionRestoring = false)
+                return
+            }
+        state = state.copy(session = session, isSessionRestoring = false)
         runCatching { loadDashboard(session) }
             .onFailure { error ->
                 if (!handleAuthFailure(error)) {
@@ -492,50 +642,253 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
-    private suspend fun loadDashboard(session: AuthSession) {
-        coroutineScope {
-            val timelineDeferred = async { repository.getTimeline() }
-            val notificationsDeferred = async { repository.getNotifications() }
-            val profileDeferred = async { repository.getProfile(session.handle) }
-            val profileFeedDeferred = async { repository.getAuthorFeed(session.handle) }
-            val followsDeferred = async { repository.getFollows(session.handle) }
-            val followersDeferred = async { repository.getFollowers(session.handle) }
-            val timeline = timelineDeferred.await()
-            val notifications = notificationsDeferred.await()
-            val profile = profileDeferred.await()
-            val profileFeed = profileFeedDeferred.await()
-            val follows = followsDeferred.await()
-            val followers = followersDeferred.await()
+    private suspend fun handleOAuthRedirect(uri: String) {
+        val request = currentPendingOAuthRequest() ?: return
+        val redirectUri = Uri.parse(uri)
+        val error = redirectUri.getQueryParameter("error")
+        if (!error.isNullOrBlank()) {
+            clearPendingOAuthRequest()
+            val description = redirectUri.getQueryParameter("error_description")
             state = state.copy(
-                timeline = timeline.posts,
-                timelineCursor = timeline.cursor,
-                notifications = notifications.notifications,
-                selfProfile = profile,
-                selfProfileFeed = profileFeed.posts,
-                selfFollows = follows.actors,
-                selfFollowers = followers.actors,
-                activeProfile = profile,
-                activeProfileFeed = profileFeed.posts,
-                follows = follows.actors,
-                followers = followers.actors
+                message = description ?: stringRes(R.string.msg_oauth_cancelled)
             )
+            return
+        }
+
+        val stateParam = redirectUri.getQueryParameter("state")
+        val code = redirectUri.getQueryParameter("code")
+        if (stateParam.isNullOrBlank() || stateParam != request.state || code.isNullOrBlank()) {
+            clearPendingOAuthRequest()
+            state = state.copy(message = stringRes(R.string.msg_oauth_invalid_state))
+            return
+        }
+
+        clearPendingOAuthRequest()
+        runBusy {
+            val session = repository.loginWithOAuth(
+                code = code,
+                codeVerifier = request.codeVerifier,
+                redirectUri = request.redirectUri,
+                clientId = request.clientId
+            )
+            state = state.copy(
+                session = session,
+                oauthLoginUrl = null,
+                message = stringRes(R.string.msg_logged_in)
+            )
+            loadDashboard(session)
+        }
+    }
+
+    private suspend fun startOAuthFlow(
+        createRequest: suspend (redirectUri: String) -> OAuthAuthorizationRequest
+    ): OAuthAuthorizationRequest {
+        clearPendingOAuthRequest()
+        val callbackServer = LoopbackOAuthCallbackServer(
+            callbackPath = BlueskyOAuthConfig.LOOPBACK_REDIRECT_PATH
+        )
+        return runCatching {
+            val request = createRequest(callbackServer.redirectUri)
+            setPendingOAuthState(
+                request = request,
+                callbackServer = callbackServer
+            )
+            request
+        }.getOrElse { error ->
+            callbackServer.close()
+            throw error
+        }
+    }
+
+    private fun currentPendingOAuthRequest(): OAuthAuthorizationRequest? {
+        return synchronized(oauthLock) { sharedPendingOAuthRequest }
+    }
+
+    private fun setPendingOAuthState(
+        request: OAuthAuthorizationRequest,
+        callbackServer: LoopbackOAuthCallbackServer
+    ) {
+        synchronized(oauthLock) {
+            sharedPendingOAuthRequest = request
+            sharedCallbackServer = callbackServer
+            sharedAwaitJob?.cancel()
+            sharedAwaitJob = oauthScope.launch {
+                try {
+                    val callbackUri = callbackServer.awaitCallbackUri()
+                    oauthResultChannel.trySend(Result.success(callbackUri))
+                } catch (_: CancellationException) {
+                    // Explicit cancellation means a new auth attempt replaced this one.
+                } catch (error: Throwable) {
+                    oauthResultChannel.trySend(Result.failure(error))
+                } finally {
+                    synchronized(oauthLock) {
+                        if (sharedCallbackServer === callbackServer) {
+                            sharedCallbackServer?.close()
+                            sharedCallbackServer = null
+                        }
+                        if (sharedAwaitJob === this) {
+                            sharedAwaitJob = null
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun clearPendingOAuthRequest() {
+        synchronized(oauthLock) {
+            sharedPendingOAuthRequest = null
+            sharedAwaitJob?.cancel()
+            sharedAwaitJob = null
+            sharedCallbackServer?.close()
+            sharedCallbackServer = null
+        }
+    }
+
+    private suspend fun loadDashboard(session: AuthSession) {
+        val timeline = repository.getTimeline(
+            limit = INITIAL_TIMELINE_LOAD_LIMIT,
+            forceRefresh = true
+        )
+        state = state.copy(
+            timeline = timeline.posts,
+            timelineCursor = timeline.cursor
+        )
+        prefetchHomeTimeline(cursor = timeline.cursor)
+        preloadDashboardDetails(session)
+    }
+
+    private fun prefetchHomeTimeline(cursor: String?) {
+        if (cursor.isNullOrBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                repository.getTimeline(
+                    limit = HOME_TIMELINE_PREFETCH_LIMIT,
+                    cursor = cursor
+                )
+            }.onSuccess { nextPage ->
+                val merged = (state.timeline + nextPage.posts).distinctBy { it.uri }
+                state = state.copy(
+                    timeline = merged,
+                    timelineCursor = nextPage.cursor ?: state.timelineCursor
+                )
+            }
+        }
+    }
+
+    private fun preloadDashboardDetails(session: AuthSession) {
+        viewModelScope.launch {
+            runCatching { repository.getNotifications() }
+                .onSuccess { notifications ->
+                    state = state.copy(notifications = notifications.notifications)
+                }
+        }
+        viewModelScope.launch {
+            runCatching {
+                coroutineScope {
+                    val profileDeferred = async { repository.getProfile(session.handle) }
+                    val profileFeedDeferred = async { repository.getAuthorFeed(session.handle) }
+                    val followsDeferred = async { repository.getFollows(session.handle) }
+                    val followersDeferred = async { repository.getFollowers(session.handle) }
+                    val profile = profileDeferred.await()
+                    val profileFeed = profileFeedDeferred.await().posts
+                    val follows = followsDeferred.await().actors
+                    val followers = followersDeferred.await().actors
+                    Quadruple(profile, profileFeed, follows, followers)
+                }
+            }.onSuccess { (profile, profileFeed, follows, followers) ->
+                val activeIsSelf = state.activeProfile == null ||
+                    state.activeProfile?.did == state.session?.did ||
+                    state.activeProfile?.handle.equals(session.handle, ignoreCase = true)
+                state = state.copy(
+                    selfProfile = profile,
+                    selfProfileFeed = profileFeed,
+                    selfFollows = follows,
+                    selfFollowers = followers,
+                    activeProfile = if (activeIsSelf) profile else state.activeProfile,
+                    activeProfileFeed = if (activeIsSelf) profileFeed else state.activeProfileFeed,
+                    follows = if (activeIsSelf) follows else state.follows,
+                    followers = if (activeIsSelf) followers else state.followers
+                )
+            }
         }
     }
 
     private suspend fun refreshTimelineOnly() {
-        val timeline = repository.getTimeline()
+        val timeline = repository.getTimeline(
+            limit = INITIAL_TIMELINE_LOAD_LIMIT,
+            forceRefresh = true
+        )
         state = state.copy(timeline = timeline.posts, timelineCursor = timeline.cursor)
+        prefetchHomeTimeline(cursor = timeline.cursor)
+    }
+
+    private suspend fun refreshTimelineWithNewest() {
+        val currentTimeline = state.timeline
+        val previousTopUri = currentTimeline.firstOrNull()?.uri?.takeIf { it.isNotBlank() }
+        val firstPage = repository.getTimeline(
+            limit = INITIAL_TIMELINE_LOAD_LIMIT,
+            forceRefresh = true
+        )
+
+        if (previousTopUri == null) {
+            state = state.copy(timeline = firstPage.posts, timelineCursor = firstPage.cursor)
+            return
+        }
+
+        val collected = mutableListOf<PostUi>()
+        val seenUris = linkedSetOf<String>()
+        var foundPreviousTop = false
+        var cursor = firstPage.cursor
+        var pagePosts = firstPage.posts
+        var scannedPages = 0
+
+        while (true) {
+            for (post in pagePosts) {
+                val uri = post.uri
+                if (uri.isBlank()) continue
+                if (uri == previousTopUri) {
+                    foundPreviousTop = true
+                    break
+                }
+                if (seenUris.add(uri)) {
+                    collected += post
+                }
+            }
+            if (foundPreviousTop || cursor.isNullOrBlank() || scannedPages >= MAX_REFRESH_SCAN_PAGES) {
+                break
+            }
+            val nextPage = repository.getTimeline(
+                limit = HOME_TIMELINE_PAGE_LIMIT,
+                cursor = cursor,
+                forceRefresh = true
+            )
+            pagePosts = nextPage.posts
+            cursor = nextPage.cursor
+            scannedPages++
+        }
+
+        if (collected.isEmpty()) {
+            state = state.copy(timeline = firstPage.posts, timelineCursor = firstPage.cursor)
+            return
+        }
+
+        val merged = (collected + currentTimeline).distinctBy { it.uri }
+        state = state.copy(
+            timeline = merged,
+            timelineCursor = firstPage.cursor
+        )
     }
 
     private suspend fun refreshActiveProfileFeed() {
         val actor = state.activeProfile?.handle ?: return
-        val feed = repository.getAuthorFeed(actor)
+        val feed = repository.getAuthorFeed(actor, forceRefresh = true)
         state = state.copy(activeProfileFeed = feed.posts)
     }
 
     private suspend fun refreshSelfProfileFeed() {
         val actor = state.selfProfile?.handle ?: state.session?.handle ?: return
-        val feed = repository.getAuthorFeed(actor).posts
+        val feed = repository.getAuthorFeed(actor, forceRefresh = true).posts
         val activeIsSelf = state.activeProfile?.did == state.selfProfile?.did &&
             !state.selfProfile?.did.isNullOrBlank()
         state = state.copy(
@@ -545,15 +898,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshActiveProfile(actor: String) {
-        loadProfile(actor)
+        loadProfile(actor = actor, forceRefresh = true)
     }
 
-    private suspend fun loadProfile(actor: String) {
+    private suspend fun loadProfile(actor: String, forceRefresh: Boolean = false) {
         coroutineScope {
-            val profile = async { repository.getProfile(actor) }
-            val feed = async { repository.getAuthorFeed(actor) }
-            val follows = async { repository.getFollows(actor) }
-            val followers = async { repository.getFollowers(actor) }
+            val profile = async { repository.getProfile(actor, forceRefresh = forceRefresh) }
+            val feed = async { repository.getAuthorFeed(actor, forceRefresh = forceRefresh) }
+            val follows = async { repository.getFollows(actor, forceRefresh = forceRefresh) }
+            val followers = async { repository.getFollowers(actor, forceRefresh = forceRefresh) }
             val resolvedProfile = profile.await()
             val resolvedFeed = feed.await().posts
             val resolvedFollows = follows.await().actors
@@ -597,6 +950,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private fun updatePostTranslation(postUri: String, transform: (PostTranslationState) -> PostTranslationState) {
+        val current = state.postTranslations[postUri] ?: PostTranslationState()
+        state = state.copy(
+            postTranslations = state.postTranslations + (postUri to transform(current))
+        )
+    }
+
+    private fun canTranslateBetween(sourceLanguageTag: String, targetLanguageTag: String): Boolean {
+        val sourceLanguage = translationService.resolveMlKitLanguage(sourceLanguageTag) ?: return false
+        val targetLanguage = translationService.resolveMlKitLanguage(targetLanguageTag) ?: return false
+        return sourceLanguage != targetLanguage
+    }
+
+    private fun getCurrentAppLanguageTag(): String {
+        val localeList: LocaleList = getApplication<Application>().resources.configuration.locales
+        val locale = localeList.get(0) ?: Locale.getDefault()
+        return locale.toLanguageTag()
+    }
+
     private suspend fun runBusy(block: suspend () -> Unit) {
         state = state.copy(isBusy = true)
         runCatching { block() }
@@ -619,7 +991,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 message = stringRes(R.string.msg_session_refreshed_retry)
             )
         } else {
+            repository.logout()
             state.copy(
+                session = null,
                 message = stringRes(R.string.msg_auth_error_relogin)
             )
         }
@@ -642,7 +1016,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val MAX_POST_LENGTH = 300
         private const val SEARCH_DEBOUNCE_MS = 350L
         private const val SEARCH_USERS_LIMIT = 60
+        private const val INITIAL_TIMELINE_LOAD_LIMIT = 20
+        private const val HOME_TIMELINE_PREFETCH_LIMIT = 20
+        private const val HOME_TIMELINE_PAGE_LIMIT = 40
+        private const val MAX_REFRESH_SCAN_PAGES = 5
+        private val oauthLock = Any()
+        private val oauthScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val oauthResultChannel = Channel<Result<String>>(capacity = Channel.BUFFERED)
+        @Volatile
+        private var sharedPendingOAuthRequest: OAuthAuthorizationRequest? = null
+        @Volatile
+        private var sharedCallbackServer: LoopbackOAuthCallbackServer? = null
+        @Volatile
+        private var sharedAwaitJob: Job? = null
     }
+
+    private data class Quadruple<A, B, C, D>(
+        val first: A,
+        val second: B,
+        val third: C,
+        val fourth: D
+    )
 
     private fun queueSearch(query: String, immediate: Boolean) {
         searchJob?.cancel()
