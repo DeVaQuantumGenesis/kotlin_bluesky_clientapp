@@ -19,6 +19,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.text.ClickableText
@@ -37,6 +39,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -117,6 +120,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -131,6 +135,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.bluesky_clientapp_kotlin.R
@@ -336,7 +342,7 @@ fun BlueskyClientApp(viewModel: MainViewModel = viewModel()) {
     }
 
     if (selectedMedia != null) {
-        MediaViewerSheet(
+        MediaViewerFullscreen(
             media = requireNotNull(selectedMedia),
             onDismiss = { selectedMedia = null }
         )
@@ -2117,61 +2123,94 @@ private fun InlineVideoPlayer(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MediaViewerSheet(
+private fun MediaViewerFullscreen(
     media: PostMediaUi,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(
+    var scale by remember(media.url) { mutableFloatStateOf(1f) }
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .background(Color.Black)
+                .statusBarsPadding()
                 .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = if (media.type == PostMediaType.Video) {
-                    stringResource(R.string.video_post)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pinchToZoom(
+                        scale = scale,
+                        onScaleChange = { scale = it }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (media.type == PostMediaType.Video) {
+                    InlineVideoPlayer(
+                        uri = media.url,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale
+                            )
+                    )
                 } else {
-                    stringResource(R.string.image_post)
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            if (media.type == PostMediaType.Video) {
-                InlineVideoPlayer(
-                    uri = media.url,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                )
-            } else {
-                AsyncImage(
-                    model = media.url,
-                    contentDescription = media.alt.ifBlank { null },
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                    AsyncImage(
+                        model = media.url,
+                        contentDescription = media.alt.ifBlank { null },
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale
+                            )
+                    )
+                }
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.close),
+                    tint = Color.White
                 )
             }
-            if (media.alt.isNotBlank()) {
-                Text(
-                    text = media.alt,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        }
+    }
+}
+
+private fun Modifier.pinchToZoom(
+    scale: Float,
+    onScaleChange: (Float) -> Unit,
+    minScale: Float = 1f,
+    maxScale: Float = 4f
+): Modifier {
+    return this.pointerInput(scale, minScale, maxScale) {
+        awaitEachGesture {
+            do {
+                val event = awaitPointerEvent()
+                val activePointerCount = event.changes.count { it.pressed }
+                if (activePointerCount > 1) {
+                    val zoomChange = event.calculateZoom()
+                    if (zoomChange != 1f) {
+                        onScaleChange((scale * zoomChange).coerceIn(minScale, maxScale))
+                    }
+                    event.changes.forEach { it.consume() }
+                }
+            } while (event.changes.any { it.pressed })
         }
     }
 }
